@@ -6,58 +6,50 @@ from PIL import Image
 import requests
 from io import BytesIO
 
+from server import PromptServer
+from aiohttp import web
+import json
+
+
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
 class PinterestImageNode:
-    _board_names = ["all"]
+    def __init__(self):
+        self.node_id = None
+    
+    node_board_names = {}
 
-    """ 
-    ! currently inactive since having issues populating and instancing the board name input dropdown 
-    """
-    """ 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "username": ("STRING", {"default": "", "multiline": False}),
-                "board_name": (cls._board_names, {"default": "all"}),
-                "update_board_names": ("BOOLEAN", {"default": False}),
-                "pause_api_requests": ("BOOLEAN", {"default": False}),
-            },
-            "hidden": {"seed": "INT"},
-        }
-    """
+    def update_board_name(cls, node_id, board_name):
+        cls.node_board_names[node_id] = board_name
+
+    @classmethod
+    def get_board_name(cls, node_id):
+        return cls.node_board_names.get(node_id, "all")
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "username": ("STRING", {"default": "", "multiline": False}),
-                "board_name": ("STRING", {"default": "all", "multiline": False}),
-                "update_board_names": ("BOOLEAN", {"default": False}),
-                "pause_api_requests": ("BOOLEAN", {"default": False}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             },
-            "hidden": {"seed": "INT"},
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_TYPES = ("IMAGE",)
 
     FUNCTION = "get_random_pinterest_image"
     CATEGORY = "pinterest"
-    OUTPUT_NODE = True
 
-    def onNodeCreated(self):
-        self.username = ""
-        self.board_name = "all"
-        self._board_names = ["all"]
-        self.update_board_names = False
+    def get_random_pinterest_image(self, username, seed):
+        board_name = self.get_board_name(self.node_id)
+        print(f"Getting random Pinterest image from board '{board_name}' for user '{username}' (Node ID: {self.node_id})")
 
-    def get_random_pinterest_image(self, username, board_name, update_board_names, pause_api_requests):
         if not username:
             raise ValueError(f"No username provided")
         
-        self.pinterest = Pinterest(username=username)
+        self.pinterest = Pinterest(username=username, cred_root='./cred_root')
 
         pins = []
         boards = self.pinterest.boards(username=username)
@@ -73,49 +65,53 @@ class PinterestImageNode:
         if not pins:
             raise ValueError(f"No pins found for the selected board(s) board_name: {board_name}")
 
-        if update_board_names and username:
-            self._board_names = ["all"] + [board['name'] for board in boards]
+        random_pin = random.choice(pins)
+        image_url = random_pin['images']['474x']['url']
         
-        print(f"username: {username}")
-        print(f"self._board_names: {self._board_names}")
-
-        """ temporary fix for the board name dropdown"""
-        board_names_string = "\n".join(self._board_names)
-
-        if pins:
-            random_pin = random.choice(pins)
-            image_url = random_pin['images']['474x']['url']
-            
-            if image_url:
-                response = requests.get(image_url)
-                img = Image.open(BytesIO(response.content))
-                img_tensor = pil2tensor(img)
-                return (img_tensor, board_names_string)
-            else:
-                raise ValueError("No suitable image URL found in the pin data")
+        if image_url:
+            response = requests.get(image_url)
+            img = Image.open(BytesIO(response.content))
+            img_tensor = pil2tensor(img)
+            return (img_tensor,)
         else:
-            raise ValueError(f"No pins found for the selected board(s) board_name: {board_name}")
-    
-    @classmethod
-    def IS_CHANGED(cls, username, board_name, update_board_names, pause_api_requests, seed):
-        if not pause_api_requests:
-            return {"seed": random.randint(0, 2**2 - 1)}
-        return False
+            raise ValueError("No suitable image URL found in the pin data")
+
+
+@PromptServer.instance.routes.post('/pinterestimageboard/get_board_names')
+async def api_get_board_names(request):
+    try:
+        data = await request.json()
+        username = data.get('username')
+        print("Getting Boards from Pinterest username:", username)
+        pinterestApi = Pinterest(username=username)
+        boards = pinterestApi.boards(username=username)
+        board_names = ["all"] + [board['name'] for board in boards]
+        return web.json_response({"board_names": board_names})
+    except Exception as e:
+        print("Error parsing request body:", e)
+        return web.json_response({"error": str(e)}, status=500)
+
+@PromptServer.instance.routes.post('/pinterestimageboard/update_board')
+async def api_update_board(request):
+    try:
+        data = await request.json()
+        username = data.get('username')
+        board_name = data.get('board_name')
+        node_id = data.get('node_id')
+        print(f"Updating board for {username}: {board_name} (Node ID: {node_id})")
+        PinterestImageNode.update_board_name(node_id, board_name)
+        print(f"Check update board for {username}: {board_name} (Node ID: {node_id}) > node_board_names[{node_id}]: {PinterestImageNode.node_board_names[node_id]}")
+        return web.json_response({"status": "success", "board_name": board_name})
+    except Exception as e:
+        print("Error in update_board route:", e)
+        return web.json_response({"error": str(e)}, status=500)
 
 """ 
 ! TODO
 
-* - make the board name dropdown work
--- preferebly a button to update the board names
+* - targeting a specific board not working
+-- issue is that FUNCTION and RETURN_TYPES need to be in the python file as it currently stands
+-- if finding a way making these work in the javascript file would basically resolve this issue
+-- javascript file needs the image either way in order to display the image in the node UI
 
-* - if having more then 1 node in the workflow they do behave blocking
--- meaning that each node will need to wait for the next node to finish before proving the image
---- and so on until the last node
----- annoying and hope 
-
-* - pause the api requests is not working - try another approach
--- also needs thorough testing as it did work in another workflow
---- (which wasnt really a workflow and more like a test spitting out images)
-
-* - github repo
 """
