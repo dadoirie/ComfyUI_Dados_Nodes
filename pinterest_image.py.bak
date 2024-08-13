@@ -17,6 +17,17 @@ from ComfyUI_Dados_Nodes import dirs
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
+@contextlib.contextmanager
+def suppress_specific_output():
+    temp_stdout = io.StringIO()
+    with contextlib.redirect_stdout(temp_stdout):
+        yield
+    output = temp_stdout.getvalue()
+    filtered_output = '\n'.join([line for line in output.split('\n')
+                                 if not (line.startswith("No credentials stored [Errno 21] Is a directory:")
+                                         and "/.cred_root" in line)])
+    print(filtered_output, end='')
+
 class PinterestImageNode:
     board_name = {}
 
@@ -69,7 +80,8 @@ class PinterestImageNode:
         if not username:
             raise ValueError(f"No username provided")
 
-        self.pinterest = Pinterest(username=username, cred_root=cred_root)
+        with suppress_specific_output():
+            self.pinterest = Pinterest(username=username, cred_root=cred_root)
 
         pins = []
         boards = self.pinterest.boards(username=username)

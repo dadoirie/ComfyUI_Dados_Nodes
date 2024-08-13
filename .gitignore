@@ -1,4 +1,4 @@
+.vscode/
 __pycache__/
 
-ComfyReferences/
-
+.cred_root/
