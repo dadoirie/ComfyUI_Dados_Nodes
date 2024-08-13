@@ -1,6 +1,6 @@
 # Privacy Policy for ComfyUI_Dados_Nodes
 
-Last updated: [Current Date]
+Last updated: 13th August 2024
 
 ## Overview
 
