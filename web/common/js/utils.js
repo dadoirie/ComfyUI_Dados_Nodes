@@ -1,3 +1,5 @@
+import { api } from "../../../../scripts/api.js";
+
 export function chainCallback(object, property, callback) {
   if (object == undefined) {
       console.error('Tried to add callback to non-existent object');
@@ -13,6 +15,14 @@ export function chainCallback(object, property, callback) {
   } else {
       object[property] = callback;
   }
+}
+
+export async function fetchApiSend(route, operation, data) {
+  return api.fetchApi(route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ op: operation, ...data })
+  }).then(response => response.json());
 }
 
 export async function getWidget(node, name, maxRetries = 3) {

@@ -1,0 +1,73 @@
+.dn_overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  z-index: 99999999;
+}
+
+.dn_modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 80%;
+  height: 80%;
+  transform: translate(-50%, -50%) scale(0);
+  background-color: #191919FF;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  z-index: 100000000;
+  opacity: 0;
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+  border: none;
+  outline: none;
+  resize: both;
+  overflow: auto;
+  max-width: 90vw;
+  max-height: 90vh;
+  min-width: 20vw;
+  min-height: 20vh;
+}
+
+.dn_resize_handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 25px;
+  height: 25px;
+  background-color: transparent;
+}
+
+.dn_content_wrapper {
+  transition: opacity 0.05s ease-out;
+}
+
+.dn_close_button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 32px;
+  cursor: pointer;
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease-out;
+  line-height: 0.8;
+  padding: 0 0 4px 0;
+}
+
+.dn_close_button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}

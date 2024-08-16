@@ -1,149 +1,208 @@
-import random
-import torch
-import numpy as np
-import requests
 import json
-from py3pin.Pinterest import Pinterest
-from PIL import Image
-from io import BytesIO
-from server import PromptServer
-from aiohttp import web
+import random
 import time
 import contextlib
 import io
 
-from ComfyUI_Dados_Nodes import dirs
+import torch
+import numpy as np
+import requests
+
+from py3pin.Pinterest import Pinterest
+from PIL import Image
+from server import PromptServer  # type: ignore pylint: disable=import-error
+from aiohttp import web
+
+from .. import constants
 
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
+def get_data(data, *keys):
+    return tuple(data.get(key) for key in keys)
+
+@contextlib.contextmanager
+def suppress_specific_output():
+    temp_stdout = io.StringIO()
+    with contextlib.redirect_stdout(temp_stdout):
+        yield
+    output = temp_stdout.getvalue()
+    filtered_output = '\n'.join([line for line in output.split('\n')
+                                 if not (line.startswith("No credentials stored [Errno 21] Is a directory:")
+                                         and "/.cred_root" in line)])
+    print(filtered_output, end='')
+
 class PinterestImageNode:
-    board_name = {}
-
-    @classmethod
-    def update_board_name(cls, board_name, node_id):
-        cls.board_name[node_id] = board_name
-
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "username": ("STRING", {"default": "", "multiline": False}),
+                "image_output": (["fixed", "chaotic draw", "circular shuffle"], {"default": "chaotic draw"}),
+                "api_requests": (["cached", "live"], {"default": "live"}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
             },
         }
 
-    RETURN_TYPES = ("IMAGE","STRING")
+    RETURN_TYPES = ("IMAGE",)
 
     FUNCTION = "get_random_pinterest_image"
     CATEGORY = "pinterest"
 
+    board_name = {}
 
-    def get_random_pinterest_image(self, username, unique_id):
-        print(f"unique_id: {unique_id}")
+    def __init__(self):
+        self.pinterest = None
+        self.last_image_url = {
+            "img_tensor": None,
+            "image_url": None,
+            "metadata": None,
+        }
 
-        cred_root = dirs.BASE_DIR + "/.cred_root"
+    @classmethod
+    def update_board_name(cls, node_id, board_name):
+        cls.board_name[node_id] = board_name
+
+    def get_random_pinterest_image(self, username, image_output, api_requests, unique_id):
+        if not username:
+            raise ValueError("No username input provided")
+
+        if image_output == "fixed" and self.last_image_url["img_tensor"] is not None:
+            PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(unique_id), {
+                "operation": "result",
+                "result": {
+                    "board_name": PinterestImageNode.board_name[int(unique_id)],
+                    "image_url": self.last_image_url["image_url"]}
+            })
+            return (self.last_image_url["img_tensor"],)
+
+        if int(unique_id) not in PinterestImageNode.board_name or not PinterestImageNode.board_name[int(unique_id)]:
+            print(f"requesting selected board name for {unique_id} node")
+            PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(unique_id), {
+                "operation": "get_selected_board",
+                "node_id": unique_id
+            })
+
+            for _ in range(100):
+                if int(unique_id) in PinterestImageNode.board_name:
+                    break
+                time.sleep(0.05)
+
+            if int(unique_id) not in PinterestImageNode.board_name:
+                raise ValueError("no board name found")
+
+        print(f"Processing node with unique_id: {unique_id}")
+
+        cred_root = constants.BASE_DIR + "/.cred_root"
         print("cred_root folder: ", cred_root)
 
-        print(f"All board names: {PinterestImageNode.board_name}")
-    
+        print(f"All board name: {PinterestImageNode.board_name}")
+
         board_name = PinterestImageNode.board_name[int(unique_id)]
-
-        """ start_time = time.time() * 1000  # Convert to milliseconds
-        for _ in range(100):
-            if PinterestImageNode.board_name is not None:
-                board_name = PinterestImageNode.board_name
-                PinterestImageNode.board_name = None
-                break
-            time.sleep(0.01)  # Short sleep to prevent excessive CPU usage
-
-        end_time = time.time() * 1000  # Convert to milliseconds
-        elapsed_time = round(end_time - start_time)
-
-        print(f"Board name retrieval took {elapsed_time} milliseconds") """
 
         print(f"Getting random Pinterest image from board '{board_name}' for user '{username}'")
 
-        if not username:
-            raise ValueError(f"No username provided")
-
-        self.pinterest = Pinterest(username=username, cred_root=cred_root)
+        with suppress_specific_output():
+            self.pinterest = Pinterest(username=username, cred_root=cred_root)
 
         pins = []
         boards = self.pinterest.boards(username=username)
+
         if board_name == "all":
-            for board in boards:
-                pins.extend([pin for pin in self.pinterest.board_feed(board_id=board['id']) if 'images' in pin and '474x' in pin['images']])
+            batch = self.pinterest.get_user_pins(username=username)
+            while batch:
+                pins.extend([pin for pin in batch if 'images' in pin and '474x' in pin['images']])
+                batch = self.pinterest.get_user_pins(username=username)
+
         else:
-            target_board = next((board for board in boards if board['name'].lower() == board_name.lower()), None)
+            target_board = next(
+                (board for board in boards if board['name'].lower() == board_name.lower()), None)
             if not target_board:
-                raise ValueError(f"Board '{board_name}' not found for user '{username}'")
-            pins = [pin for pin in self.pinterest.board_feed(board_id=target_board['id']) if 'images' in pin and '474x' in pin['images']]
+                raise ValueError(
+                    f"Board '{board_name}' not found for user '{username}'")
+            pins = [pin for pin in self.pinterest.board_feed(
+                board_id=target_board['id']) if 'images' in pin and '474x' in pin['images']]
 
         if not pins:
-            raise ValueError(f"No pins found for the selected board(s) board_name: {board_name}")
+            raise ValueError(
+                f"No pins found for the selected board(s) board_name: {board_name}")
 
-        random_pin = random.choice(pins)
+        while True:
+            random_pin = random.choice(pins)
+            if not random_pin.get('is_video', False):
+                break
         image_url = random_pin['images']['474x']['url']
 
+        """ # ! code for research purposes
+        matching_pin = None
+        for pin in pins:
+            if pin is not None and isinstance(pin, dict):
+                native_creator = pin.get('native_creator', {})
+                if isinstance(native_creator, dict) and native_creator.get('type') != 'user':
+                    matching_pin = pin
+                    break
+
+        if matching_pin:
+            print(json.dumps(matching_pin, indent=2)) """
+
         if image_url:
-            response = requests.get(image_url)
-            img = Image.open(BytesIO(response.content))
+            response = requests.get(image_url, timeout=30)
+            img = Image.open(io.BytesIO(response.content))
             img_tensor = pil2tensor(img)
 
+            # might be useful later
             metadata = json.dumps(random_pin, indent=2)
+            print(metadata)
 
-            """ return (img_tensor, board_name, metadata) """
-            return (img_tensor,metadata)
-        else:
-            raise ValueError("No suitable image URL found in the pin data")
+            PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(unique_id), {
+                "operation": "result",
+                "result": {
+                    "board_name": board_name,
+                    "image_url": image_url}
+            })
+            self.last_image_url = {
+                "img_tensor": img_tensor,
+                "image_url": image_url,
+                "metadata": metadata,
+            }
+
+            return (img_tensor,)
+
+        raise ValueError("No suitable image URL found in the pin data")
 
     @classmethod
-    def IS_CHANGED(cls, username):
+    def IS_CHANGED(cls):
         return random.randint(1, 1000000)
 
-
-
-@PromptServer.instance.routes.post('/dadoNodes/pinterestNode')
+@PromptServer.instance.routes.post('/dadoNodes/pinterestNode/')
 async def api_pinterest_router(request):
-    try:
-        data = await request.json()
-        operation = data.get('op')
-        username = data.get('username')
-        
-        if operation == 'get_pinterest_board_names':
-            print("Getting Boards from Pinterest username:", username)
-            pinterestApi = Pinterest(username=username)
-            boards = pinterestApi.boards(username=username)
-            board_names = ["all"] + [board['name'] for board in boards]
-            return web.json_response({"board_names": board_names})
-        elif operation == 'update_selected_board_name':
-            board_name = data.get('board_name')
-            node_id = data.get('node_id')
-            print(f"Updating board for {username}: {board_name} (Node ID: {node_id})")
-            PinterestImageNode.update_board_name(board_name, node_id)
-            return web.json_response({"status": "success", "board_name": board_name})
-        else:
-            return web.json_response({"error": "Unknown operation"}, status=400)
-    except Exception as e:
-        print("Error processing request:", e)
-        return web.json_response({"error": str(e)}, status=500)
+    data = await request.json()
+    operation, username = get_data(data, 'op', 'username')
 
-""" 
-! TODO
+    if operation == 'get_pinterest_board_names':
+        print(f"Getting Boards from Pinterest username: {username}")
+        with suppress_specific_output():
+            pinterest = Pinterest(username=username, cred_root=constants.BASE_DIR + "/.cred_root")
+        try:
+            boards = pinterest.boards(username=username)
+        except Exception as e:
+            print(e)
+            return web.json_response(status=404)
+        board_names = ["all"] + [board['name'] for board in boards]
+        return web.json_response({"board_names": board_names})
 
-* - preview image right on the node UI - last widget
--- issue is that widgets are being added also by the javascript file
--- which means if adding preview image widget here on the python file, the javascript widgets will be added after the preview image widget
--- unless there is a way to add widgets in the javascript file before the preview image widget
+    if operation == 'update_selected_board_name':
+        board_name = data.get('board_name')
+        node_id = data.get('node_id')
+        print(f"Updating board for {username}: {board_name} (Node ID: {node_id})")
+        PinterestImageNode.update_board_name(node_id, board_name)
+        return web.json_response({"status": "success", "board_name": board_name})
 
-* - targeting a specific board not working
--- issue is that FUNCTION and RETURN_TYPES need to be in the python file as it currently stands
--- if finding a way making these work in the javascript file would basically resolve this issue
--- javascript file needs the image either way in order to display the image in the node UI
+    if operation == 'common_test':
+        message = data.get('message')
+        print(f"Received message: {message}")
+        return web.json_response({"status": "success", "reply": "you got it"})
 
-* - de-bloat code, clean up, centralize functionalities
-
-"""
+    return web.json_response({"error": "Unknown operation"}, status=400)
