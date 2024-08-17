@@ -11,6 +11,40 @@ const fetchApiPinRoute = '/dadoNodes/pinterestNode/';
 const baseUrl = window.location.origin + window.location.pathname.replace(/\/+$/, '');
 const scriptUrl = `${baseUrl}/extensions/ComfyUI_Dados_Nodes/web/comfyui/pinterest_image.js`;
 
+const widgetDataList = [
+    { name: "username_new", type: "string", value: "", tooltip: "Enter \nthe Pinterest username" },
+    { name: "board_name", type: "dropdown", value: "all", options: [], tooltip: "Select an option" },
+    { name: "Select Image", type: "button", action: function() { pinterest_modal(this)(); }, tooltip: "Click to perform an action" },
+];
+
+const widgetFactory = {
+    createWidget: (node, { name, type, value, options, tooltip, action }) => {
+        const widgetTypes = {
+            string: ["text", value => { widgetCallback(node, { name, value }); return value; }],
+            dropdown: ["combo", value => { widgetCallback(node, { name, value }); return value; }, { values: options }],
+            button: ["button", function() { action.call(node); widgetCallback(node, { name, type });}],
+        };
+
+        const [widgetType, callback, widgetOptions] = widgetTypes[type];
+        
+        const widget = node.addWidget(widgetType, name, value, callback, widgetOptions);
+        
+        widget.tooltip = tooltip;
+        return widget;
+    }
+};
+
+function widgetCallback(node, changedWidget) {
+    // if (changedWidget.name === "username_new") {
+        node.username = changedWidget.value;
+        console.log(`Widget ${changedWidget.name} changed. New value: ${changedWidget.value}`);
+        console.log("Changed Widget type:", changedWidget.type);
+        console.log("Node ID:", node.id);
+        // Add any logic here
+    // }
+}
+
+
 async function updateBackend(node) {
     const { 
         username: usernameWidget, 
@@ -154,6 +188,7 @@ function setupEventListener(node) {
         if (detail["operation"] === "result") {
             // console.log("board name", detail["result"]["board_name"]);
             // console.log("image url", detail["result"]["image_url"]
+            
             node.images = [detail["result"]["image_url"]];
             node.loadedImage = null;
             node.setDirtyCanvas(true);
@@ -239,7 +274,18 @@ app.registerExtension({
 
             chainCallback(nodeType.prototype, 'onNodeCreated', async function () {
                 
+                // NEW LOGIC START
+                const widgetCreator = (widgetData) => {
+                    return widgetFactory.createWidget(this, widgetData);
+                };
                 await setupBoardNameWidget(this);
+            
+                // Create widgets
+                const newWidgets = widgetDataList.map(widgetData => widgetCreator(widgetData));
+                const usernameWidgetNew = await getWidget(this, "username_new");
+                console.log("(Dados.EventListeners) Username Widget :", usernameWidgetNew);
+                // NEW LOGIC END
+                
                 const usernameWidget = await getWidget(this, "username");
                 usernameWidget.callback = async (whatsthis) => {
                     const node = app.graph.getNodeById(this.id);
@@ -262,11 +308,11 @@ app.registerExtension({
                     }
                 };
 
-                this.addCustomWidget({
+/*                 this.addCustomWidget({
                     name: "Select Image",
                     type: "button",
                     callback: pinterest_modal(this)
-                });
+                }); */
 
                 this.images = [];
                 setupEventListener(this);
@@ -277,51 +323,45 @@ app.registerExtension({
                     : [350, computedSize[1]];
                 this.setSize([width, height]);
                 await updateBoardNames(this)
+
                 this.setDirtyCanvas(true);
             });
 
             
             chainCallback(nodeType.prototype, 'onDrawBackground', function(ctx) {
                 if (this.flags.collapsed || !this.images || !this.images.length) return;
-
-                const MARGIN = 10;
-                const DOUBLE_MARGIN = MARGIN * 2;
             
-                const availableWidth = this.size[0] - DOUBLE_MARGIN;
+                const MARGIN = 10;
+                const availableWidth = this.size[0] - MARGIN * 2;
                 const initialHeight = this.computeSize()[1];
             
-                if (!this.loadedImage) {
-                    this.loadedImage = new Image();
-                    this.loadedImage.src = this.images[0];
-                    this.loadedImage.onload = () => {
-                        if (!this.hasAdjustedHeight) {
-                            const aspectRatio = this.loadedImage.height / this.loadedImage.width;
-                            this.size[1] = initialHeight + Math.min(availableWidth, this.loadedImage.width) * aspectRatio + DOUBLE_MARGIN;
-                            this.hasAdjustedHeight = true;
-                        }
-                        this.cachedImgAspectRatio = this.loadedImage.height / this.loadedImage.width;
-                        this.setDirtyCanvas(true);
-                    };
-                    /* this.loadedImage.onerror = () => {
-                        console.error('Failed to load image:', this.images[0]);
-                        // maybe?!?
-                    }; */
-                }
+                const loadAndDrawImage = () => {
+                    if (!this.loadedImage) {
+                        this.loadedImage = new Image();
+                        this.loadedImage.src = this.images[0];
+                        this.loadedImage.onload = () => {
+                            this.cachedImgAspectRatio = this.loadedImage.height / this.loadedImage.width;
+                            if (!this.hasAdjustedHeight) {
+                                this.size[1] = initialHeight + Math.min(availableWidth, this.loadedImage.width) * this.cachedImgAspectRatio;
+                                this.hasAdjustedHeight = true;
+                            }
+                            this.setDirtyCanvas(true);
+                            loadAndDrawImage();
+                        };
+                    } else if (this.loadedImage.complete) {
+                        const availableHeight = this.size[1] - initialHeight - MARGIN;
+                        const imageWidth = Math.min(availableWidth, this.loadedImage.width, availableHeight / this.cachedImgAspectRatio);
+                        const imageHeight = imageWidth * this.cachedImgAspectRatio;
             
-                if (this.loadedImage.complete) {
-                    const imgAspectRatio = this.cachedImgAspectRatio || this.loadedImage.height / this.loadedImage.width;
-                    const availableHeight = this.size[1] - initialHeight - DOUBLE_MARGIN;
-                    const imageWidth = Math.min(availableWidth, this.loadedImage.width, availableHeight / imgAspectRatio);
-                    const imageHeight = imageWidth * imgAspectRatio;
+                        ctx.drawImage(this.loadedImage, 
+                            MARGIN + (availableWidth - imageWidth) / 2, 
+                            initialHeight, 
+                            imageWidth, imageHeight);
+                    }
+                };
             
-                    ctx.drawImage(this.loadedImage, 
-                        MARGIN + (availableWidth - imageWidth) / 2, 
-                        initialHeight + MARGIN, 
-                        imageWidth, imageHeight);
-                }
+                loadAndDrawImage();
             });
-            
-            
             
             chainCallback(nodeType.prototype, 'onResize', function(size) {
                 // console.log("(Dados.PinterestImageButton) resizing :", this.size);
