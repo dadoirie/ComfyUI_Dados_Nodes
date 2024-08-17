@@ -1,9 +1,9 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { ComfyDialog } from "../../scripts/ui.js";
 import { getStorageValue, setStorageValue } from "../../scripts/utils.js";
 
 const { chainCallback, getWidget, getWidgets, fetchApiSend } = await import("/extensions/ComfyUI_Dados_Nodes/common/js/utils.js");
-const { createModal } = await import('/extensions/ComfyUI_Dados_Nodes/common/js/modal.js');
 const { pinterest_modal } = await import('/extensions/ComfyUI_Dados_Nodes/common/js/pinterest_modal.js');
 
 const boardDataUpdatedEvent = new Event('boardDataUpdated');
@@ -11,7 +11,7 @@ const fetchApiPinRoute = '/dadoNodes/pinterestNode/';
 const baseUrl = window.location.origin + window.location.pathname.replace(/\/+$/, '');
 const scriptUrl = `${baseUrl}/extensions/ComfyUI_Dados_Nodes/web/comfyui/pinterest_image.js`;
 
-async function updateBackendBoardName(node) {
+async function updateBackend(node) {
     const { 
         username: usernameWidget, 
         board_name: boardNameWidget
@@ -45,6 +45,7 @@ const {
         try {
             const boardNames = await fetchApiSend(fetchApiPinRoute, "get_pinterest_board_names", {
                 username: username,
+                node_id: node.id,
             });
 
             const storedData = JSON.parse(getStorageValue("Pinterest_username_boards")) || {};
@@ -60,14 +61,24 @@ const {
             document.dispatchEvent(boardDataUpdatedEvent);
             return boardNames.board_names;
         } catch (error) {
-            console.error("Error fetching board names:", error);
+            if (error instanceof Response) {
+                error.text().then(text => {
+                    console.error("Error response text:", text);
+                });
+            } else {
+                console.error("Error details:", error.toString());
+            }
         }
     }
 }
 
 async function setupBoardNameWidget(node) {
     const usernameWidget = await getWidget(node, "username");
-    let username = usernameWidget?.value;
+    if (usernameWidget.value === undefined) {
+        return;
+    }
+    
+    let username = usernameWidget.value;
     let storedBoards = JSON.parse(getStorageValue("Pinterest_username_boards")) || {};
     
     function getBoardData() {
@@ -98,7 +109,7 @@ async function setupBoardNameWidget(node) {
             const usernameWidget = await getWidget(node, "username");
             updateUsername(usernameWidget.value, node.id);
             updateStoredBoards(v);
-            updateBackendBoardName(node);
+            updateBackend(node);
         } catch (error) {
             console.error("Error handling board selection:", error);
         }
@@ -111,7 +122,7 @@ async function setupBoardNameWidget(node) {
         boardWidget.value = userBoardData.selected[node.id] || boardWidget.value;
     });
 
-    updateBackendBoardName(node);
+    updateBackend(node);
 }
 
 async function clearSelectedBoard(node) {
@@ -129,6 +140,77 @@ async function clearSelectedBoard(node) {
         }
         setStorageValue("Pinterest_username_boards", JSON.stringify(storedBoards));
     }
+}
+
+function setupEventListener(node) {
+    const nodeApiRoute = fetchApiPinRoute + node.id
+    const originalOnDrawForeground = node.onDrawForeground || node.__proto__.onDrawForeground;
+
+    api.addEventListener(nodeApiRoute, ({ detail }) => {
+        if (detail["operation"] === "get_selected_board") {
+            // console.log("python backend requesting selected board name from node ", detail["node_id"]);
+            updateBackend(node)
+        }
+        if (detail["operation"] === "result") {
+            // console.log("board name", detail["result"]["board_name"]);
+            // console.log("image url", detail["result"]["image_url"]
+            node.images = [detail["result"]["image_url"]];
+            node.loadedImage = null;
+            node.setDirtyCanvas(true);
+        
+        }
+        if (detail["operation"] === "user_not_found") {
+            console.error("error", detail["message"]);
+            
+            const errorDialog = new ComfyDialog();
+            errorDialog.show(detail["message"]);
+        
+            node.hasError = true;
+            node.errorMessage = detail["message"];
+        
+            node.onDrawForeground = function(ctx) {
+                if (originalOnDrawForeground) {
+                    originalOnDrawForeground.call(this, ctx);
+                }
+            
+                if (this.hasError) {
+                    ctx.strokeStyle = "#FF0000";
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(0, 0, this.size[0], this.size[1]);
+                }
+            };
+
+            node.setDirtyCanvas(true);
+        }
+        if (detail["operation"] === "user_found") {
+            if (node.hasError) {
+                node.hasError = false;
+                node.errorMessage = null;
+            }
+            node.isBlinking = true;        
+            
+            node.onDrawForeground = function(ctx) {
+                if (originalOnDrawForeground) {
+                    originalOnDrawForeground.call(this, ctx);
+                }
+                
+                if (this.isBlinking) {
+                    ctx.strokeStyle = "#228B22";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(0, 0, this.size[0], this.size[1]);
+                }
+            };
+        
+            setTimeout(() => {
+                node.isBlinking = false;
+                node.onDrawForeground = originalOnDrawForeground;
+                node.setDirtyCanvas(true);
+            }, 250);
+            
+            node.setDirtyCanvas(true);
+        }
+        
+    });
 }
 
 app.registerExtension({
@@ -150,6 +232,8 @@ app.registerExtension({
             chainCallback(LGraphNode.prototype, "configure", function(info) {
                 if (info.type === "PinterestImageNode") {
                     this.previousSize = [...this.size];
+                    console.log("(Dados.EventListeners) Node Configured :", this.type, this.id, this.size);
+                    console.log("(Dados.EventListeners) Node :", this);
                 }
             });
 
@@ -157,7 +241,7 @@ app.registerExtension({
                 
                 await setupBoardNameWidget(this);
                 const usernameWidget = await getWidget(this, "username");
-                usernameWidget.callback = async (currentUsername) => {
+                usernameWidget.callback = async (whatsthis) => {
                     const node = app.graph.getNodeById(this.id);
                     clearSelectedBoard(node);
 
@@ -177,76 +261,6 @@ app.registerExtension({
                         this.setDirtyCanvas(true);
                     }
                 };
-            
-                /* this.addCustomWidget({
-                    name: "Select Image",
-                    type: "button",
-                    callback: () => {
-                        const contentDiv = document.createElement('div');
-                        contentDiv.innerHTML = `<h2 id="modalTitle"></h2>`;
-                        
-                        const customLogic = async (modal, testString) => {
-
-                            if (modal.config.nodeId) {
-                                const result = await fetchApiSend("/dadoNodes/pinterestNode/", "common_test", {
-                                  message: `Hello, API! from node ${modal.config.nodeId}. Test string: ${testString}`,
-                                });
-                                console.log("Reply:", result);
-                            }
-                            const titleElement = modal.view.contentWrapper.querySelector('#modalTitle');
-                            titleElement.textContent = modal.config.title;
-                        
-                            const inputField = document.createElement('input');
-                            inputField.type = 'text';
-                            inputField.placeholder = 'Enter new title';
-                        
-                            const changeButton = document.createElement('button');
-                            changeButton.textContent = 'Change Title';
-                            changeButton.onclick = () => {
-                                modal.config.title = inputField.value;
-                                titleElement.textContent = modal.config.title;
-                            };
-                            const closeButton = document.createElement('button');
-                            closeButton.textContent = 'Close Modal';
-                            closeButton.onclick = () => {
-                                modal.closeModal();
-                            };
-                        
-                            modal.view.contentWrapper.appendChild(inputField);
-                            modal.view.contentWrapper.appendChild(changeButton);
-                            modal.view.contentWrapper.appendChild(closeButton);
-
-                            const usernameInput = document.createElement('input');
-                            usernameInput.type = 'text';
-                            usernameInput.placeholder = 'Enter new username';
-                        
-                            const changeUsernameButton = document.createElement('button');
-                            changeUsernameButton.textContent = 'Change Username';
-                            changeUsernameButton.onclick = async () => {
-                                const node = app.graph.getNodeById(modal.config.nodeId);
-                                const usernameWidget = await getWidget(node, "username");
-                                usernameWidget.value = usernameInput.value;
-                                usernameWidget.callback(usernameInput.value);
-                                node.setDirtyCanvas(true);
-                            };
-                        
-                            modal.view.contentWrapper.appendChild(usernameInput);
-                            modal.view.contentWrapper.appendChild(changeUsernameButton);
-                        
-                        };
-                        
-                        const modalConfig = {
-                            content: contentDiv,
-                            nodeId: this.id,
-                            contentType: 'html',
-                            onClose: () => console.log('Modal closed'),
-                            customLogic: customLogic,
-                            title: "Initial Title"
-                        };
-                        
-                        createModal(modalConfig);
-                    },
-                }); */
 
                 this.addCustomWidget({
                     name: "Select Image",
@@ -255,22 +269,7 @@ app.registerExtension({
                 });
 
                 this.images = [];
-                const nodeApiRoute = fetchApiPinRoute + this.id
-                api.addEventListener(nodeApiRoute, ({ detail }) => {
-                    if (detail["operation"] === "get_selected_board") {
-                        // console.log("python backend requesting selected board name from node ", detail["node_id"]);
-                        updateBackendBoardName(this)
-                    }
-                    if (detail["operation"] === "result") {
-                        // console.log("board name", detail["result"]["board_name"]);
-                        // console.log("image url", detail["result"]["image_url"]);
-
-                        this.images = [detail["result"]["image_url"]];
-                        this.loadedImage = null;
-                        this.setDirtyCanvas(true);
-                    
-                    }
-                });
+                setupEventListener(this);
 
                 const computedSize = this.computeSize();
                 const [width, height] = this.previousSize && this.previousSize.every(val => val !== undefined)
@@ -332,15 +331,23 @@ app.registerExtension({
     }
 });
 
-/* api.addEventListener("executing", async ({ detail }) => {
+api.addEventListener("executing", async ({ detail }) => {
     const nodeId = parseInt(detail);
     if (!isNaN(nodeId)) {
         const node = app.graph.getNodeById(nodeId);
         if (node.type === "PinterestImageNode") {
-            // updateBackendBoardName(node);
-            console.log(node);
-            console.log("Output data for slot 1:", node.getOutputInfo(0));
+            node.hasError = false;
+            node.errorMessage = null;
+
+            const originalOnDrawForeground = node.onDrawForeground || node.__proto__.onDrawForeground;
+            node.onDrawForeground = function(ctx) {
+                if (originalOnDrawForeground) {
+                    originalOnDrawForeground.call(this, ctx);
+                }
+            };
+
+            node.setDirtyCanvas(true);
         }
     }
-  }); */
+});
 

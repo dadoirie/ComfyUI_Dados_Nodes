@@ -4,16 +4,23 @@ import time
 import contextlib
 import io
 
+from PIL import Image
 import torch
 import numpy as np
 import requests
-
-from py3pin.Pinterest import Pinterest
-from PIL import Image
-from server import PromptServer  # type: ignore pylint: disable=import-error
 from aiohttp import web
 
+from py3pin.Pinterest import Pinterest
+from py3pin.RequestBuilder import RequestBuilder
+
+# sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
+from server import PromptServer  # type: ignore pylint: disable=import-error
+import comfy.model_management  # type: ignore pylint: disable=import-error
+
 from .. import constants
+
+def interrupt_processing(value=True):
+    comfy.model_management.interrupt_current_processing(value)
 
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
@@ -31,6 +38,27 @@ def suppress_specific_output():
                                  if not (line.startswith("No credentials stored [Errno 21] Is a directory:")
                                          and "/.cred_root" in line)])
     print(filtered_output, end='')
+
+def check_user_exists(pinterest, username, unique_id):
+    USER_RESOURCE = "https://www.pinterest.com/_ngjs/resource/UserResource/get/"
+    options = {
+        "isPrefetch": "false",
+        "username": username,
+        "field_set_key": "profile",
+    }
+    try:
+        url = pinterest.req_builder.buildGet(url=USER_RESOURCE, options=options)
+        pinterest.get(url=url)
+        return True
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error occurred: {e}")
+        if e.response.status_code == 404:
+            print("User not found. Please check the username.")
+            PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(unique_id), {
+                "operation": "user_not_found",
+                "message": "User not found. Please check the username."
+            })
+        return False
 
 class PinterestImageNode:
     @classmethod
@@ -60,14 +88,32 @@ class PinterestImageNode:
             "image_url": None,
             "metadata": None,
         }
+        self.req_builder = RequestBuilder()
 
     @classmethod
     def update_board_name(cls, node_id, board_name):
-        cls.board_name[node_id] = board_name
+        if node_id not in cls.board_name:
+            cls.board_name[node_id] = {}
+        cls.board_name[node_id]['board_name'] = board_name
 
     def get_random_pinterest_image(self, username, image_output, api_requests, unique_id):
         if not username:
-            raise ValueError("No username input provided")
+            PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(unique_id), {
+                "operation": "user_not_found",
+                "message": "No username input provided."
+            })
+            # raise ValueError("No username input provided")
+            interrupt_processing(True)
+            return (None,)
+        
+        cred_root = constants.BASE_DIR + "/.cred_root"
+        if self.pinterest is None:
+            with suppress_specific_output():
+                self.pinterest = Pinterest(username=username, cred_root=cred_root)
+
+        if not check_user_exists(self.pinterest, username, unique_id):
+            interrupt_processing(True)
+            return (None,)
 
         if image_output == "fixed" and self.last_image_url["img_tensor"] is not None:
             PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(unique_id), {
@@ -93,14 +139,12 @@ class PinterestImageNode:
             if int(unique_id) not in PinterestImageNode.board_name:
                 raise ValueError("no board name found")
 
-        print(f"Processing node with unique_id: {unique_id}")
+        board_name = PinterestImageNode.board_name[int(unique_id)]['board_name']
 
-        cred_root = constants.BASE_DIR + "/.cred_root"
+        print(f"Processing node with unique_id: {unique_id}")
         print("cred_root folder: ", cred_root)
 
         print(f"All board name: {PinterestImageNode.board_name}")
-
-        board_name = PinterestImageNode.board_name[int(unique_id)]
 
         print(f"Getting random Pinterest image from board '{board_name}' for user '{username}'")
 
@@ -154,7 +198,7 @@ class PinterestImageNode:
 
             # might be useful later
             metadata = json.dumps(random_pin, indent=2)
-            print(metadata)
+            # print(metadata)
 
             PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(unique_id), {
                 "operation": "result",
@@ -183,13 +227,17 @@ async def api_pinterest_router(request):
 
     if operation == 'get_pinterest_board_names':
         print(f"Getting Boards from Pinterest username: {username}")
+        node_id = data.get('node_id')
         with suppress_specific_output():
             pinterest = Pinterest(username=username, cred_root=constants.BASE_DIR + "/.cred_root")
-        try:
-            boards = pinterest.boards(username=username)
-        except Exception as e:
-            print(e)
-            return web.json_response(status=404)
+        if not check_user_exists(pinterest, username, node_id):
+            interrupt_processing(True)
+            return web.json_response({"error": "user not found"}, status=404)
+        PromptServer.instance.send_sync('/dadoNodes/pinterestNode/' + str(node_id), {
+            "operation": "user_found",
+            "message": "user found",
+        })
+        boards = pinterest.boards(username=username)
         board_names = ["all"] + [board['name'] for board in boards]
         return web.json_response({"board_names": board_names})
 

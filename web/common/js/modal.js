@@ -3,26 +3,34 @@ class ModalView {
     this.loadCSS();
     this.overlay = document.createElement('div');
     this.overlay.className = 'dn_overlay';
+    this.overlay.style.opacity = '0';
+    this.overlay.style.transition = 'opacity 0.3s ease-out';
 
     this.modal = document.createElement('div');
     this.modal.className = 'dn_modal';
+    this.modal.style.opacity = '0';
+    this.modal.style.transform = 'translate(-50%, -50%) scale(0)';
+    this.modal.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+  
 
     this.contentWrapper = document.createElement('div');
     this.contentWrapper.className = 'dn_content_wrapper';
+    this.contentWrapper.style.transition = 'opacity 0.05s ease-out';
+  
 
     this.resizeHandle = document.createElement('div');
     this.resizeHandle.className = 'dn_resize_handle';
 
     this.closeButton = document.createElement('button');
     this.closeButton.className = 'dn_close_button';
-    this.closeButton.textContent = '×';
+    this.closeButton.textContent = '×';  
+    this.closeButton.style.transition = 'all 0.2s ease-out';
 
     this.modal.appendChild(this.resizeHandle);
     this.modal.appendChild(this.closeButton);
     this.modal.appendChild(this.contentWrapper);
 
     this.modal.tabIndex = -1;
-    // Set initial styles
     this.modal.style.opacity = '0';
     this.modal.style.transform = 'translate(-50%, -50%) scale(0)';
     this.overlay.style.opacity = '0';
@@ -40,8 +48,6 @@ class ModalView {
   render() {
     document.body.appendChild(this.overlay);
     document.body.appendChild(this.modal);
-    
-    // Force a reflow to ensure styles are applied before animation
     this.modal.offsetHeight;
 }
 
@@ -51,17 +57,17 @@ class ModalView {
 
   show() {
     requestAnimationFrame(() => {
-        this.modal.style.opacity = '1';
-        this.modal.style.transform = 'translate(-50%, -50%) scale(1)';
-        this.overlay.style.opacity = '1';
-        this.modal.focus();
+      this.modal.style.opacity = '1';
+      this.modal.style.transform = 'translate(-50%, -50%) scale(1)';
+      this.overlay.style.opacity = '1';
+      this.modal.focus();
     });
-}
+  }
 
   close() {
     this.contentWrapper.style.opacity = '0';
     this.overlay.style.opacity = '0';
-    this.modal.style.transition = 'transform 0.15s ease-in';
+    this.modal.style.opacity = '0';
     this.modal.style.transform = 'translate(-50%, -50%) scale(0)';
   }
 
@@ -164,7 +170,6 @@ class ModalModel {
   }
 }
 
-// Main export function
 export function createModal(config) {
   const modalModel = new ModalModel(config);
   modalModel.render();
