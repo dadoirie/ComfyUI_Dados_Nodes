@@ -11,54 +11,180 @@ const fetchApiPinRoute = '/dadoNodes/pinterestNode/';
 const baseUrl = window.location.origin + window.location.pathname.replace(/\/+$/, '');
 const scriptUrl = `${baseUrl}/extensions/ComfyUI_Dados_Nodes/web/comfyui/pinterest_image.js`;
 
+async function manageUrlWidget(node, action) {
+    const usernameWidgetName = "username";
+    const usernameWidget = node.widgets.find(w => w.name === usernameWidgetName);
+    const widgetName = "image_url";
+    const existingWidget = node.widgets.find(w => w.name === widgetName);
+    const currentWidth = node.size[0];
+    const currentHeight = node.size[1];
+    
+    switch (action) {
+        case "add":
+            if (!existingWidget) {
+                widgetFactory.createWidget(node, {
+                    name: widgetName,
+                    type: "string",
+                    value: "",
+                    tooltip: "Enter the image URL"
+                });
+                console.log("URL widget added");
+            }
+            break;
+        case "remove":
+            if (existingWidget) {
+                const index = node.widgets.indexOf(existingWidget);
+                if (index > -1) {
+                    node.widgets.splice(index, 1);
+                    console.log("URL widget removed");
+                }
+            }
+            break;
+            case "toggle":
+                if (usernameWidget) {
+                    usernameWidget.value = "dado";
+                    usernameWidget.callback(usernameWidget.value);
+                } else {
+                    console.log("Username widget not found");
+                }
+                break;
+    }
+    node.size = [currentWidth, currentHeight];
+    node.setDirtyCanvas(true);
+}
+
+
 const widgetDataList = [
-    { name: "username_new", type: "string", value: "", tooltip: "Enter \nthe Pinterest username" },
-    { name: "board_name", type: "dropdown", value: "all", options: [], tooltip: "Select an option" },
-    { name: "Select Image", type: "button", action: function() { pinterest_modal(this)(); }, tooltip: "Click to perform an action" },
+    /* {
+        name: "username",
+        type: "string",
+        value: "",
+        tooltip: "Pinterest username"
+    }, */
+    { 
+        name: "url",
+        type: "string",
+        value: "",
+        tooltip: "[WIP]\nUser Profile, Board, Section, Pin URLs\nupdates entire node inputs\nafter successful update URL input resets\n\n*Raw Image URLs are not supported and will throw an error*"
+    },
+    {
+        name: "board",
+        type: "dropdown",
+        value: "all",
+        options: ["all"],
+        tooltip: "only if username is set\n`all` all users pins are in the pool (boards & sections)\n`board name` only pins of that board are in the pool"
+    },
+    {
+        name: "section",
+        type: "dropdown",
+        value: "excluded",
+        options: ["included", "excluded"],
+        tooltip: "does nothing if selected board is `all`\n`included` boards sections are included in pool\n`excluded` boards sections are excluded from pool\n`section name` only pins of that section are in the pool"
+    },
+    {
+        name: "api_requests",
+        type: "dropdown",
+        value: "live",
+        options: ["cached", "live"],
+        tooltip: "Select an option"
+    },
+    {
+        name: "image_output",
+        type: "dropdown",
+        value: "chaotic draw",
+        options: ["fixed", "chaotic draw", "circular shuffle"],
+        tooltip: "Select an option"
+    },
+    {
+        name: "image_resolution",
+        type: "dropdown",
+        value: "564x",
+        options: ["474x", "chaotic draw", "circular shuffle"],
+        tooltip: "Select an option"
+    },
+    {
+        name: "Select Image",
+        type: "button", action: function() { pinterest_modal(this)(); },
+        tooltip: "Browse Pinterest for images"
+    },
+/*     { name: "Add Url Widget", type: "button", action: function() { manageUrlWidget(this, "add"); }, tooltip: "Add URL widget" },
+    { name: "Remove Url Widget", type: "button", action: function() { manageUrlWidget(this, "remove"); }, tooltip: "Remove URL widget" },
+    { name: "change username", type: "button", action: function() { manageUrlWidget(this, "toggle"); }, tooltip: "Toggle URL widget" }, */
 ];
 
 const widgetFactory = {
     createWidget: (node, { name, type, value, options, tooltip, action }) => {
         const widgetTypes = {
-            string: ["text", value => { widgetCallback(node, { name, value }); return value; }],
-            dropdown: ["combo", value => { widgetCallback(node, { name, value }); return value; }, { values: options }],
+            string: ["text", value => { widgetCallback(node, { name, value, type }); return value; }],
+            dropdown: ["combo", value => { widgetCallback(node, { name, value, type }); return value; }, { values: options }],
             button: ["button", function() { action.call(node); widgetCallback(node, { name, type });}],
         };
 
         const [widgetType, callback, widgetOptions] = widgetTypes[type];
-        
         const widget = node.addWidget(widgetType, name, value, callback, widgetOptions);
-        
         widget.tooltip = tooltip;
+
         return widget;
     }
 };
 
 function widgetCallback(node, changedWidget) {
-    // if (changedWidget.name === "username_new") {
-        node.username = changedWidget.value;
-        console.log(`Widget ${changedWidget.name} changed. New value: ${changedWidget.value}`);
-        console.log("Changed Widget type:", changedWidget.type);
-        console.log("Node ID:", node.id);
-        // Add any logic here
-    // }
+    // maybe even removing its callback completely ... lets see
+    if (changedWidget.type === "button") {
+        return;
+    }
+    console.log("CALLED");
+
+    console.log(`\
+        Widget [ ${changedWidget.name} ] changed
+        New value: [${changedWidget.value}]
+        Widget type: [${changedWidget.type}]
+        Node ID: [${node.id}]`
+    );
+
+    if (changedWidget.name === "username") {
+        handleUsernameChange(node);
+    }
+
+    console.log("FINISHED");
 }
 
+async function handleUsernameChange(node) {
+    clearSelectedBoard(node);
 
-async function updateBackend(node) {
+    const updatedBoardNames = await getUserBoards(node);
+    if (!updatedBoardNames) return;
+
+    const widgets = await getWidgets(node, ["board"]);
+    const boardWidget = widgets.board;
+    if (!boardWidget) return;
+
+    updateBoardNameWidget(boardWidget, updatedBoardNames);
+    // node.setDirtyCanvas(true);
+    
+    boardWidget.callback(boardWidget.value);
+}
+
+function updateBoardNameWidget(widget, boardNames) {
+    const currentValue = widget.value;
+    widget.options = { values: boardNames };
+    widget.value = boardNames.includes(currentValue) ? currentValue : boardNames[0];
+}
+
+async function updateBackendLegacy(node) {
     const { 
         username: usernameWidget, 
-        board_name: boardNameWidget
-    } = await getWidgets(node, ["username", "board_name"]);
+        board: boardWidget
+    } = await getWidgets(node, ["username", "board"]);
 
     const username = usernameWidget.value;
-    const boardName = boardNameWidget.value;
+    const boardName = boardWidget.value;
 
     if (username && boardName) {
         try {
             const result = await fetchApiSend(fetchApiPinRoute, "update_selected_board_name", {
                 username: username,
-                board_name: boardName,
+                board: boardName,
                 node_id: node.id
             });
             console.log("Board updated successfully:", result);
@@ -68,16 +194,36 @@ async function updateBackend(node) {
     }
 }
 
-async function updateBoardNames(node) {
-const { 
+async function updateBackend(node) {
+    const { 
         username: usernameWidget, 
-        board_name: boardNameWidget
-    } = await getWidgets(node, ["username", "board_name"]);
+    } = await getWidgets(node, ["username"]);
+
+    const username = usernameWidget.value;
+
+    if (username) {
+        try {
+            const result = await fetchApiSend(fetchApiPinRoute, "update_backend_inputs", {
+                username: username,
+                node_id: node.id
+            });
+            console.log("Backend inputs updated successfully:", result);
+        } catch (error) {
+            console.error("Error updating backend inputs:", error);
+        }
+    }
+}
+
+async function updateBoardNamesLegacy(node) {
+    const { 
+        username: usernameWidget, 
+        board: boardWidget
+    } = await getWidgets(node, ["username", "board"]);
 
     const username = usernameWidget.value;
     if (username) {
         try {
-            const boardNames = await fetchApiSend(fetchApiPinRoute, "get_pinterest_board_names", {
+            const boardNames = await fetchApiSend(fetchApiPinRoute, "get_user_boards", {
                 username: username,
                 node_id: node.id,
             });
@@ -87,8 +233,8 @@ const {
                 storedData[username] = { boards: [], selected: {} };
             }
             storedData[username].boards = boardNames.board_names;
-            storedData[username].selected[node.id] = boardNames.board_names.includes(boardNameWidget.value) 
-                ? boardNameWidget.value 
+            storedData[username].selected[node.id] = boardNames.board_names.includes(boardWidget.value) 
+                ? boardWidget.value 
                 : boardNames.board_names[0];
             setStorageValue("Pinterest_username_boards", JSON.stringify(storedData));
 
@@ -106,7 +252,28 @@ const {
     }
 }
 
-async function setupBoardNameWidget(node) {
+async function getUserBoards(node) {
+    const widgets = await getWidgets(node, ["username"]);
+
+    const username = widgets.username.value;
+    if (username) {
+        try {
+            const boardNames = await fetchApiSend(fetchApiPinRoute, "get_user_boards", {
+                username: username,
+                node_id: node.id,
+            });
+
+            document.dispatchEvent(boardDataUpdatedEvent);
+            return boardNames.board_names;
+        } catch (error) {
+            console.log("TRIGGERED")
+            console.error("Error fetching board names:", error.message);
+        }
+    }
+}
+
+
+async function setupBoardNameWidgetLegacy(node) {
     const usernameWidget = await getWidget(node, "username");
     if (usernameWidget.value === undefined) {
         return;
@@ -133,7 +300,11 @@ async function setupBoardNameWidget(node) {
         document.dispatchEvent(boardDataUpdatedEvent);
     }
 
-    const boardWidget = node.addWidget("combo", "board_name", getBoardData().selected[node.id] || "all", function(v) {
+    const boardWidget = await getWidget(node, "board");
+    boardWidget.options.values = getBoardData().boards;
+    boardWidget.value = getBoardData().selected[node.id] || "all";
+
+/*     const boardWidget = node.addWidget("combo", "board", getBoardData().selected[node.id] || "all", function(v) {
         handleBoardSelection(v, node);
         return v;
     }, { values: getBoardData().boards });
@@ -143,11 +314,11 @@ async function setupBoardNameWidget(node) {
             const usernameWidget = await getWidget(node, "username");
             updateUsername(usernameWidget.value, node.id);
             updateStoredBoards(v);
-            updateBackend(node);
+            updateBackendLegacy(node);
         } catch (error) {
             console.error("Error handling board selection:", error);
         }
-    }
+    } */
 
     document.addEventListener('boardDataUpdated', () => {
         storedBoards = JSON.parse(getStorageValue("Pinterest_username_boards")) || {};
@@ -156,11 +327,11 @@ async function setupBoardNameWidget(node) {
         boardWidget.value = userBoardData.selected[node.id] || boardWidget.value;
     });
 
-    updateBackend(node);
+    updateBackendLegacy(node);
 }
 
 async function clearSelectedBoard(node) {
-    const currentBoardNameWidget = await getWidget(node, "board_name");
+    const currentBoardNameWidget = await getWidget(node, "board");
     const storedBoards = JSON.parse(getStorageValue("Pinterest_username_boards"));
 
     const matchingUsername = storedBoards ? Object.keys(storedBoards).find(username =>
@@ -180,13 +351,33 @@ function setupEventListener(node) {
     const nodeApiRoute = fetchApiPinRoute + node.id
     const originalOnDrawForeground = node.onDrawForeground || node.__proto__.onDrawForeground;
 
-    api.addEventListener(nodeApiRoute, ({ detail }) => {
+    // doesn't make much sense with current error handling
+    // for now it'll just listen silently in order avoid "unhandled message" alert
+    // will see later if it can be used more effectively
+    api.addEventListener("execution_interrupted", (event) => {
+        // console.debug("execution_interrupted", event.detail)
+    })
+    api.addEventListener(nodeApiRoute, async ({ detail }) => {
         if (detail["operation"] === "get_selected_board") {
             // console.log("python backend requesting selected board name from node ", detail["node_id"]);
+            updateBackendLegacy(node)
+        }
+        if (detail["operation"] === "get_inputs") {
+            // console.log("python backend requesting selected board name from node ", detail["node_id"]);
+                // Send the response back to the Python backend
+            console.log("python backend requesting selected board name from node ", detail["node_id"]);
+
+            const widgets = await getWidgets(node, ["username"]);
+            fetchApiSend('/dadoNodes/pinterestNode/', 'critical_response', {
+                message: widgets.username.value 
+                    ? widgets.username.value
+                    : "No username input provided"
+            });
+
             updateBackend(node)
         }
         if (detail["operation"] === "result") {
-            // console.log("board name", detail["result"]["board_name"]);
+            // console.log("board name", detail["result"]["board"]);
             // console.log("image url", detail["result"]["image_url"]
             
             node.images = [detail["result"]["image_url"]];
@@ -261,7 +452,11 @@ app.registerExtension({
             }
         });
     },
-    
+
+    async nodeCreated(node) {
+        console.log("(Dados.EventListeners) Node Created :", node);
+    },
+
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name === "PinterestImageNode") {
             chainCallback(LGraphNode.prototype, "configure", function(info) {
@@ -273,27 +468,30 @@ app.registerExtension({
             });
 
             chainCallback(nodeType.prototype, 'onNodeCreated', async function () {
+                const usernameWidget = this.widgets.find(w => w.name === "username");
+                usernameWidget.callback = (value) => widgetCallback(this, { name: "username", value, type: "string" });
                 
                 // NEW LOGIC START
                 const widgetCreator = (widgetData) => {
                     return widgetFactory.createWidget(this, widgetData);
                 };
-                await setupBoardNameWidget(this);
-            
+                
                 // Create widgets
-                const newWidgets = widgetDataList.map(widgetData => widgetCreator(widgetData));
-                const usernameWidgetNew = await getWidget(this, "username_new");
+                widgetDataList.map(widgetData => widgetCreator(widgetData));
+                const usernameWidgetNew = await getWidget(this, "username");
                 console.log("(Dados.EventListeners) Username Widget :", usernameWidgetNew);
                 // NEW LOGIC END
+                await setupBoardNameWidgetLegacy(this);
                 
-                const usernameWidget = await getWidget(this, "username");
-                usernameWidget.callback = async (whatsthis) => {
+                // const usernameWidget = await getWidget(this, "username");
+
+                /* usernameWidget.callback = async (whatsthis) => {
                     const node = app.graph.getNodeById(this.id);
                     clearSelectedBoard(node);
 
-                    const updatedBoardNames = await updateBoardNames(this);
+                    const updatedBoardNames = await updateBoardNamesLegacy(this);
                     if (updatedBoardNames) {
-                        const boardNameWidget = await getWidget(this, "board_name");
+                        const boardNameWidget = await getWidget(this, "board");
                         let currentValue = boardNameWidget.value;
 
                         boardNameWidget.options.values = updatedBoardNames;
@@ -306,7 +504,7 @@ app.registerExtension({
 
                         this.setDirtyCanvas(true);
                     }
-                };
+                }; */
 
 /*                 this.addCustomWidget({
                     name: "Select Image",
@@ -322,7 +520,7 @@ app.registerExtension({
                     ? this.previousSize
                     : [350, computedSize[1]];
                 this.setSize([width, height]);
-                await updateBoardNames(this)
+                // await updateBoardNamesLegacy(this)
 
                 this.setDirtyCanvas(true);
             });
@@ -390,4 +588,5 @@ api.addEventListener("executing", async ({ detail }) => {
         }
     }
 });
+
 
