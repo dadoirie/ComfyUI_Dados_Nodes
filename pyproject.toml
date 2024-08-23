@@ -1,0 +1,14 @@
+[project]
+name = "comfyui_dados_nodes"
+description = "[heavily under WIP - use at own risk]\nComfyUI_Dados_Nodes is a collection of custom nodes for ComfyUI, designed to enhance functionality and provide integration with various services, including Pinterest. This privacy policy explains how these nodes handle user data.\nNOTE: [a/privacy_policy](https://github.com/dadoirie/ComfyUI_Dados_Nodes/blob/master/privacy_policy.md)"
+version = "0.1.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/dadoirie/ComfyUI_Dados_Nodes"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "dadoirie"
+DisplayName = "ComfyUI_Dados_Nodes"
+Icon = ""
