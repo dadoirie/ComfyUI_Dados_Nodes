@@ -42,28 +42,34 @@ def get_model():
     return model
 
 def download_pixaitagger():
+    # Check if the main model file already exists
+    model_file = MODEL_DIR
+    if model_file.exists():
+        return str(MODEL_DIR)
+
     # Get user directory from folder_paths
     user_dir = folder_paths.get_user_directory()
-    default_user = "default"  # TODO determine how to find the correct user - for now its 'default'
+    default_user = "default" # TODO determine how to find the correct user - for now its 'default'
     settings_file = Path(user_dir) / default_user / "comfy.settings.json"
 
+    # Get the hf_token from settings file
     hf_token = None
     if settings_file.exists():
         with open(settings_file, 'r', encoding='utf-8') as f:
             settings = json.load(f)
             hf_token = settings.get('dadosNodes.hf_token')
-
-    logout()  # ! DEBUG PURPOSE
-    if hf_token:
-        login(hf_token)
-    else:
+    
+    # Return error if the hf_token doesn't exist
+    if not hf_token:
         raise ValueError("Hugging Face access token needs to be set in the settings for PixAI Tagger.")
     
+    # Download the model from Hugging Face if it doesn't exist
     path = snapshot_download(
         "pixai-labs/pixai-tagger-v0.9",
         local_dir=MODEL_DIR,
+        token=hf_token,
         force_download=False,
-        local_files_only=False,
+        local_files_only=False, 
         local_dir_use_symlinks="auto"
     )
     return path
