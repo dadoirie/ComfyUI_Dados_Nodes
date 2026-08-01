@@ -1,0 +1,125 @@
+{
+  "type": "object",
+  "title": "Input",
+  "required": [
+    "prompt",
+    "image"
+  ],
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "title": "Prompt",
+      "x-order": 0,
+      "description": "Prompt for video generation"
+    },
+    "image": {
+      "type": "string",
+      "title": "Image",
+      "format": "uri",
+      "x-order": 1,
+      "description": "Input image to generate video from."
+    },
+    "last_image": {
+      "type": "string",
+      "title": "Last Image",
+      "format": "uri",
+      "x-order": 2,
+      "nullable": true,
+      "description": "Optional last image to condition the video generation. If provided, creates smoother transitions between frames."
+    },
+    "num_frames": {
+      "type": "integer",
+      "title": "Num Frames",
+      "default": 81,
+      "maximum": 121,
+      "minimum": 81,
+      "x-order": 3,
+      "description": "Number of video frames. 81 frames give the best results"
+    },
+    "resolution": {
+      "enum": [
+        "480p",
+        "720p"
+      ],
+      "type": "string",
+      "title": "resolution",
+      "description": "Resolution of video. 16:9 corresponds to 832x480px, and 9:16 is 480x832px",
+      "default": "480p",
+      "x-order": 4
+    },
+    "frames_per_second": {
+      "type": "integer",
+      "title": "Frames Per Second",
+      "default": 16,
+      "maximum": 30,
+      "minimum": 5,
+      "x-order": 5,
+      "description": "Frames per second. Note that the pricing of this model is based on the video duration at 16 fps"
+    },
+    "interpolate_output": {
+      "type": "boolean",
+      "title": "Interpolate Output",
+      "default": false,
+      "x-order": 6,
+      "description": "Interpolate the generated video to 30 FPS using ffmpeg"
+    },
+    "go_fast": {
+      "type": "boolean",
+      "title": "Go Fast",
+      "default": true,
+      "x-order": 7,
+      "description": "Go fast"
+    },
+    "sample_shift": {
+      "type": "number",
+      "title": "Sample Shift",
+      "default": 12,
+      "maximum": 20,
+      "minimum": 1,
+      "x-order": 8,
+      "description": "Sample shift factor"
+    },
+    "seed": {
+      "type": "integer",
+      "title": "Seed",
+      "x-order": 9,
+      "nullable": true,
+      "description": "Random seed. Leave blank for random"
+    },
+    "disable_safety_checker": {
+      "type": "boolean",
+      "title": "Disable Safety Checker",
+      "default": false,
+      "x-order": 10,
+      "description": "Disable safety checker for generated video."
+    },
+    "lora_weights_transformer": {
+      "type": "string",
+      "title": "Lora Weights Transformer",
+      "x-order": 11,
+      "nullable": true,
+      "description": "Load LoRA weights for the HIGH transformer. Supports arbitrary .safetensors URLs from the Internet (for example, 'https://huggingface.co/TheRaf7/instagirl-v2/resolve/main/Instagirlv2.0_hinoise.safetensors')"
+    },
+    "lora_scale_transformer": {
+      "type": "number",
+      "title": "Lora Scale Transformer",
+      "default": 1,
+      "x-order": 12,
+      "description": "Determines how strongly the transformer LoRA should be applied."
+    },
+    "lora_weights_transformer_2": {
+      "type": "string",
+      "title": "Lora Weights Transformer 2",
+      "x-order": 13,
+      "nullable": true,
+      "description": "Load LoRA weights for the LOW transformer_2. Supports arbitrary .safetensors URLs from the Internet. Can be different from transformer LoRA. (for example, 'https://huggingface.co/TheRaf7/instagirl-v2/resolve/main/Instagirlv2.0_lownoise.safetensors')"
+    },
+    "lora_scale_transformer_2": {
+      "type": "number",
+      "title": "Lora Scale Transformer 2",
+      "default": 1,
+      "x-order": 14,
+      "description": "Determines how strongly the transformer_2 LoRA should be applied."
+    }
+  }
+}

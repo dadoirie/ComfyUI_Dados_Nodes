@@ -1,0 +1,83 @@
+{
+    "type": "object",
+    "title": "Input",
+    "required": [
+        "prompt",
+        "image"
+    ],
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "x-order": 0,
+            "description": "Text instruction on how to edit the given image."
+        },
+        "image": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "format": "uri"
+            },
+            "title": "Image",
+            "x-order": 1,
+            "description": "Images to use as reference. Must be jpeg, png, gif, or webp."
+        },
+        "aspect_ratio": {
+            "default": "match_input_image",
+            "x-order": 2,
+            "description": "Aspect ratio for the generated image",
+            "enum": [
+                "1:1",
+                "16:9",
+                "9:16",
+                "4:3",
+                "3:4",
+                "match_input_image"
+            ],
+            "type": "string",
+            "title": "aspect_ratio"
+        },
+        "go_fast": {
+            "type": "boolean",
+            "title": "Go Fast",
+            "default": true,
+            "x-order": 3,
+            "description": "Run faster predictions with additional optimizations."
+        },
+        "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "x-order": 4,
+            "nullable": true,
+            "description": "Random seed. Set for reproducible generation"
+        },
+        "output_format": {
+            "default": "webp",
+            "x-order": 5,
+            "description": "Format of the output images",
+            "enum": [
+                "webp",
+                "jpg",
+                "png"
+            ],
+            "type": "string",
+            "title": "output_format"
+        },
+        "output_quality": {
+            "type": "integer",
+            "title": "Output Quality",
+            "default": 95,
+            "maximum": 100,
+            "minimum": 0,
+            "x-order": 6,
+            "description": "Quality when saving the output images, from 0 to 100. 100 is best quality, 0 is lowest quality. Not relevant for .png outputs"
+        },
+        "disable_safety_checker": {
+            "type": "boolean",
+            "title": "Disable Safety Checker",
+            "default": false,
+            "x-order": 7,
+            "description": "Disable safety checker for generated images."
+        }
+    }
+}

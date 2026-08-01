@@ -1,7 +1,7 @@
 import torch
 from PIL import Image
 from pathlib import Path
-from huggingface_hub import snapshot_download, login, logout
+from huggingface_hub import snapshot_download
 from torchvision import transforms
 import timm
 import json
@@ -42,7 +42,10 @@ def get_model():
     return model
 
 def download_pixaitagger():
-    # Get user directory from folder_paths
+    model_file = MODEL_DIR
+    if model_file.exists():
+        return str(MODEL_DIR)
+
     user_dir = folder_paths.get_user_directory()
     default_user = "default"  # TODO determine how to find the correct user - for now its 'default'
     settings_file = Path(user_dir) / default_user / "comfy.settings.json"
@@ -53,15 +56,13 @@ def download_pixaitagger():
             settings = json.load(f)
             hf_token = settings.get('dadosNodes.hf_token')
 
-    logout()  # ! DEBUG PURPOSE
-    if hf_token:
-        login(hf_token)
-    else:
+    if not hf_token:
         raise ValueError("Hugging Face access token needs to be set in the settings for PixAI Tagger.")
     
     path = snapshot_download(
         "pixai-labs/pixai-tagger-v0.9",
         local_dir=MODEL_DIR,
+        token=hf_token,
         force_download=False,
         local_files_only=False,
         local_dir_use_symlinks="auto"

@@ -5,36 +5,38 @@ import json
 from .utils.api_routes import register_operation_handler
 from aiohttp import web
 from .. import constants
+from comfy_api.latest import io
 
 CACHE_DIR = os.path.join(constants.USER_DATA_DIR, "memory_storage")
 DN_STORAGE_DATA = {}
 
-class DN_MemoryStorage:
+class DN_MemoryStorage(io.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "root_graph_id": ("STRING", {"default": ""}),
-                "mode": (["set", "get"], {"default": "set"}),
-                "context": (["workflow", "global"], {"default": "workflow"}),
-                "persistent": ("BOOLEAN", {"default": False}),
-                "key": ("STRING", {"default": ""}),
-            },
-            "optional": {
-                "input": ("STRING", {"forceInput": True}),
-            },
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
-            },
-        }
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="DN_MemoryStorage",
+            display_name="Memory Storage",
+            category="Dado's Nodes/Memory Storage",
+            description="Store and retrieve values in memory",
+            inputs=[
+                io.String.Input("root_graph_id", default=""),
+                io.Combo.Input("mode", default="get", options=["set", "get"]),
+                io.Combo.Input("context", default="workflow", options=["workflow", "global"]),
+                io.Boolean.Input("persistent", default=False),
+                io.String.Input("key", default=""),
+                io.String.Input("input", force_input=True, optional=True)
+            ],
+            outputs=[
+                io.String.Output(display_name="output")
+            ],
+            hidden=[
+                io.Hidden.unique_id
+            ],
+            is_output_node=True
+        )
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("output",)
-    FUNCTION = "execute"
-    CATEGORY = "Dado's Nodes/Memory Storage"
-    OUTPUT_NODE = True
-
-    def execute(self, root_graph_id, mode, context, key, persistent, input=None, unique_id=None):
+    @classmethod
+    def execute(cls, root_graph_id, mode, context, key, persistent, input=None):
         if key == "":
             raise ValueError("Empty key")
 
@@ -73,10 +75,10 @@ class DN_MemoryStorage:
             if storage_key in DN_STORAGE_DATA and key in DN_STORAGE_DATA[storage_key]:
                 value = DN_STORAGE_DATA[storage_key][key]
         
-        return (value,)
+        return io.NodeOutput(value,)
 
     @classmethod
-    def IS_CHANGED(self, root_graph_id, mode, context, key, persistent, input=None, unique_id=None):
+    def fingerprint_inputs(cls, **kwargs):
         return random.random()
 
 @register_operation_handler

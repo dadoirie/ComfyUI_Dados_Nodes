@@ -1,9 +1,19 @@
-import requests
 import io
+import asyncio
+import aiohttp
 import torch
 import numpy as np
 from PIL import Image
+import comfy.model_management
+import nodes
 from .utils.utils import get_chutes_inputs, get_setting
+
+def interrupt_processing(value=True):
+    comfy.model_management.interrupt_current_processing(value)
+
+def check_interrupt(request_task):
+    while not request_task.done():
+        nodes.before_node_execution()
 
 class APIExecutionHandle:
     def __init__(self, call_func, *args, **kwargs):
@@ -39,8 +49,7 @@ class DN_ChutesFluxImageNode:
             return None
         return seed & 0xFFFFFFFF
 
-    def _do_api_call(self, **kwargs):
-        # Get API token from settings
+    async def _do_api_call(self, **kwargs):
         api_token = get_setting('dadosNodes.chutes_api_key')
 
         if not api_token:
@@ -58,35 +67,44 @@ class DN_ChutesFluxImageNode:
             "Content-Type": "application/json"
         }
 
-        body = kwargs
+        async with aiohttp.ClientSession() as session:
+            request_task = asyncio.create_task(session.post(self._API_ENDPOINT, headers=headers, json=kwargs))
 
-        response = requests.post(
-            self._API_ENDPOINT,
-            headers=headers,
-            json=body,
-            stream=True,
-            timeout=3600
-        )
+            checker_task = asyncio.create_task(asyncio.to_thread(check_interrupt, request_task))
+            done, pending = await asyncio.wait([request_task, checker_task], return_when=asyncio.FIRST_COMPLETED)
 
-        if response.status_code != 200:
-            raise ValueError(f"API request failed with status code: {response.status_code}")
+            if request_task in done:
+                response = request_task.result()
+                checker_task.cancel()
 
-        image_bytes = response.content
-        pil_image = Image.open(io.BytesIO(image_bytes))
-        if pil_image.mode != "RGB":
-            pil_image = pil_image.convert("RGB")
-        arr = np.array(pil_image).astype(np.float32) / 255.0
-        tensor = torch.from_numpy(arr)
-        return (tensor.unsqueeze(0),)
+                if response.status != 200:
+                    raise ValueError(f"API request failed with status code: {response.status}")
 
-    def generate_image(self, **kwargs):
+                image_bytes = await response.read()
+                pil_image = Image.open(io.BytesIO(image_bytes))
+                if pil_image.mode != "RGB":
+                    pil_image = pil_image.convert("RGB")
+                arr = np.array(pil_image).astype(np.float32) / 255.0
+                tensor = torch.from_numpy(arr)
+                return (tensor.unsqueeze(0),)
+            
+            checker_task.cancel()
+            request_task.cancel()
+            for task in pending:
+                task.cancel()
+            return None
+
+    async def generate_image(self, **kwargs):
         parallel = kwargs.pop("parallel", False)
         if parallel:
-            # Return dummy + execution handle
             dummy = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
             handle = APIExecutionHandle(self._do_api_call, **kwargs)
             return (dummy, handle)
-        else:
-            # Normal execution
-            result = self._do_api_call(**kwargs)
+        
+        result = await self._do_api_call(**kwargs)
+        if result is not None:
             return (result[0], None)
+        
+        interrupt_processing(True)
+        return (None, None)
+

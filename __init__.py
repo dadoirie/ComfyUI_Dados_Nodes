@@ -1,7 +1,7 @@
 # flake8: noqa: E402
 # pylint: disable=wrong-import-position
 import os
-from server import PromptServer
+import json
 import folder_paths
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,97 +23,103 @@ constants = Constants()
 WEB_DIRECTORY = "./web/comfyui"
 COMMON_DIRECTORY = "./web/common"
 
-
-#from .nodes.inactive_pinterest_image import inactivePinterestImageNode
-from .nodes.DN_MultilineString import DN_MultilineString
-from .nodes.DN_TextConcatenateNode import DN_TextConcatenateNode
-from .nodes.DN_TextDropDownNode import DN_TextDropDownNode
-from .nodes.DN_CSVMultiDropDownNode import DN_CSVMultiDropDownNode
-from .nodes.DN_WildcardPromptEditorNode import DN_WildcardPromptEditorNode
-from .nodes.DN_WildcardSelectorComposerV2 import DN_WildcardSelectorComposerV2
-from .nodes.DN_PromptSectionsExtractor import DN_PromptSectionsExtractor
-from .nodes.DN_WildcardsProcessor import DN_WildcardsProcessor
-from .nodes.DN_SmolVLMNode import DN_SmolVLMNode
-# from .nodes.pinterest_fetch import PinterestFetch
-from .nodes.DN_JoyTaggerNode import DN_JoyTaggerNode
-from .nodes.DN_PixAITaggerNode import DN_PixAITaggerNode
-from .nodes.DN_TagOpsNode import DN_TagOpsNode
-from .nodes.DN_pyPinNode import DN_pyPinNode
-from .nodes.DN_GroqLLMNode import DN_GroqLLMNode
-from .nodes.DN_ChutesLLMNode import DN_ChutesLLMNode
-from .nodes.DN_ChutesQwenImageNode import DN_ChutesQwenImageNode
-from .nodes.DN_ChutesQwenImageEditNode import DN_ChutesQwenImageEditNode
-from .nodes.DN_ChutesChromaImageNode import DN_ChutesChromaImageNode
-from .nodes.DN_ChutesFluxImageNode import DN_ChutesFluxImageNode
-from .nodes.DN_ChutesHiDreamNode import DN_ChutesHiDreamNode
-from .nodes.DN_ChutesHunyuanImage3Node import DN_ChutesHunyuanImage3Node
-from .nodes.DN_ChutesIllustriousNode import DN_ChutesIllustriousNode
-from .nodes.DN_ChutesSDxlNode import DN_ChutesSDxlNode
-from .nodes.DN_ChutesNetaLuminaNode import DN_ChutesNetaLuminaNode
-from .nodes.DN_ChutesImageGenNode import DN_ChutesImageGenNode
-from .nodes.DN_ChutesTextToVideoNode import DN_ChutesTextToVideoNode
-from .nodes.DN_ChutesImageToVideoNode import DN_ChutesImageToVideoNode
-from .nodes.DN_PreviewImage import DN_PreviewImage
-from .nodes.DN_ChutesParallelImageNode import DN_ChutesParallelImageNode
-from .nodes.DN_ImageBatcher import DN_ImageBatcher
-from .nodes.DN_MemoryStorage import DN_MemoryStorage
-
+# Import the ComfyUI API
+from comfy_api.latest import ComfyExtension, io
 from .nodes.utils.api_routes import register_routes
 
-NODE_CLASS_MAPPINGS = {
-    #"inactivePinterestImageNode": inactivePinterestImageNode,
-    "DN_MultilineString": DN_MultilineString,
-    "DN_TextConcatenateNode": DN_TextConcatenateNode,
-    "DN_TextDropDownNode": DN_TextDropDownNode,
-    "DN_CSVMultiDropDownNode": DN_CSVMultiDropDownNode,
-    "DN_WildcardPromptEditorNode": DN_WildcardPromptEditorNode,
-    "DN_WildcardSelectorComposerV2": DN_WildcardSelectorComposerV2,
-    "DN_PromptSectionsExtractor": DN_PromptSectionsExtractor,
-    "DN_WildcardsProcessor": DN_WildcardsProcessor,
-    "DN_SmolVLMNode": DN_SmolVLMNode,
-    # "PinterestFetch": PinterestFetch,
-    "DN_JoyTaggerNode": DN_JoyTaggerNode,
-    "DN_PixAITaggerNode": DN_PixAITaggerNode,
-    "DN_TagOpsNode": DN_TagOpsNode,
-    "DN_pyPinNode": DN_pyPinNode,
-    "DN_GroqLLMNode": DN_GroqLLMNode,
-    "DN_ChutesLLMNode": DN_ChutesLLMNode,
-    "DN_ChutesQwenImageNode": DN_ChutesQwenImageNode,
-    "DN_ChutesQwenImageEditNode": DN_ChutesQwenImageEditNode,
-    "DN_ChutesChromaImageNode": DN_ChutesChromaImageNode,
-    "DN_ChutesFluxImageNode": DN_ChutesFluxImageNode,
-    "DN_ChutesHiDreamNode": DN_ChutesHiDreamNode,
-    "DN_ChutesHunyuanImage3Node": DN_ChutesHunyuanImage3Node,
-    "DN_ChutesIllustriousNode": DN_ChutesIllustriousNode,
-    "DN_ChutesSDxlNode": DN_ChutesSDxlNode,
-    "DN_ChutesNetaLuminaNode": DN_ChutesNetaLuminaNode,
-    "DN_ChutesImageGenNode": DN_ChutesImageGenNode,
-    "DN_ChutesTextToVideoNode": DN_ChutesTextToVideoNode,
-    "DN_ChutesImageToVideoNode": DN_ChutesImageToVideoNode,
-    "DN_PreviewImage": DN_PreviewImage,
-    "DN_ChutesParallelImageNode": DN_ChutesParallelImageNode,
-    "DN_ImageBatcher": DN_ImageBatcher,
-    "DN_MemoryStorage": DN_MemoryStorage,
-}
+from .nodes.DN_ReplicateBaseNode import DN_ReplicateNodeAlpha
+from .nodes.DN_pyPinNode import DN_pyPinNode
+from .nodes.DN_PreviewImage import DN_PreviewImage
+from .nodes.DN_CSVMultiDropDownNode import DN_CSVMultiDropDownNode
+from .nodes.DN_MemoryStorage import DN_MemoryStorage
+from .nodes.DN_ImageBatcher import DN_ImageBatcher
+from .nodes.DN_MultilineString import DN_MultilineString
+from .nodes.DN_WildcardsProcessor import DN_WildcardsProcessor
+from .nodes.DN_ChutesLLMNode import DN_ChutesLLMNode
+from .nodes.DN_ImageBase64 import DN_ImageToBase64Node, DN_Base64ToImageNode
+from .nodes.DN_PythonCode import DN_PythonCode
 
-NODE_DISPLAY_NAME_MAPPINGS = {
+# Function to create a dynamic node class for a specific model
+def create_replicate_node(model_identifier):
+    """Create a dynamic node class for a specific Replicate model"""
+    
+    class_name = f"DN_Replicate_{model_identifier.replace('/', '_').replace('-', '_')}"
+    
+    # Create a new class that inherits from DN_ReplicateNodeAlpha
+    dynamic_node_class = type(class_name, (DN_ReplicateNodeAlpha,), {
+        '_replicate_model': model_identifier,
+        '__module__': __name__,
+    })
+    
+    return dynamic_node_class
+
+model_types = ["Image", "Video"]
+registered_nodes = [
+        DN_pyPinNode,
+        DN_MultilineString,
+        DN_CSVMultiDropDownNode,
+        DN_MemoryStorage,
+        DN_ImageBatcher,
+        DN_WildcardsProcessor,
+        DN_ChutesLLMNode,
+        DN_PythonCode,
+        DN_ImageToBase64Node,
+        DN_Base64ToImageNode
+    ]
+registered_replicate_models = []
+
+#! REMOVE LATER
+
+
+# Process each model type
+for model_type in model_types:
+    models_file = os.path.join(BASE_DIR, "configs", "replicate", model_type, "models.json")
+    
+    if os.path.exists(models_file):
+        with open(models_file, 'r', encoding='utf-8') as f:
+            models_config = json.load(f)
+            
+        # Create a node for each model in the config
+        for model_key in models_config.keys():
+            node_class = create_replicate_node(model_key)
+            # Set the model_type in the class
+            node_class.model_type = model_type
+            globals()[node_class.__name__] = node_class
+            registered_nodes.append(node_class)
+            registered_replicate_models.append(model_key)
+            
+GREEN = '\033[32m'
+RESET = '\033[0m'
+indent = f"{' ' * 10}"
+header = f"[{GREEN}Replicate models registered{RESET}]:"
+body = f"\n{indent}".join(registered_replicate_models)
+print(f"{header}\n{indent}{body}")
+
+class DadosNodes(ComfyExtension):
+    # must be declared as async
+    async def get_node_list(self):
+        return registered_nodes
+
+# can be declared async or not, both will work
+def comfy_entrypoint():
+    return DadosNodes()
+
+register_routes()
+
+
+""" 
     #"inactivePinterestImageNode": "Pinterest Node (WIP - broken)",
-    "DN_MultilineString": "Multiline String",
     "DN_TextConcatenateNode": "Dynamic Text Concatenate",
     "DN_TextDropDownNode": "Text DropDown",
-    "DN_CSVMultiDropDownNode": "CSV MultiDropDown",
     "DN_WildcardPromptEditorNode": "Wildcard Prompt Editor (deprecation pending)",
     "DN_WildcardSelectorComposerV2": "Wildcard Selector/Composer",
     "DN_PromptSectionsExtractor": "Prompt Sections Extractor",
-    "DN_WildcardsProcessor": "Wildcards Processor",
     "DN_SmolVLMNode": "SmolVLM Image Describer",
     # "PinterestNode": "Pinterest Node",
     "DN_JoyTaggerNode": "JoyTagger",
     "DN_PixAITaggerNode": "PixAI Tagger",
     "DN_TagOpsNode": "TagOps",
-    "DN_pyPinNode": "PyPin Node",
     "DN_GroqLLMNode": "Groq LLM",
-    "DN_ChutesLLMNode": "Chutes LLM",
     "DN_ChutesQwenImageNode": "Chutes Qwen Image Generator",
     "DN_ChutesQwenImageEditNode": "Chutes Qwen Image Editor",
     "DN_ChutesChromaImageNode": "Chutes Chroma Image Generator",
@@ -128,10 +134,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DN_ChutesImageToVideoNode": "Chutes Image-to-Video Generator",
     "DN_PreviewImage": "Preview Image (Dados Nodes)",
     "DN_ChutesParallelImageNode": "Chutes Parallel Image Generator",
-    "DN_ImageBatcher": "Image Batcher",
-    "DN_MemoryStorage": "Memory Storage",
-}
-
-register_routes()
-
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
+ """

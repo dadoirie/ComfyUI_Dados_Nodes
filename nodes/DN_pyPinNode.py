@@ -1,13 +1,14 @@
-import torch
-import torch.nn.functional as F
-import requests
 import contextlib
-import io
+import io as io_module
 import json
 import random
 import hashlib
 import os
 import glob
+import requests
+import torch
+import torch.nn.functional as F
+from comfy_api.latest import io
 from PIL import Image
 import numpy as np
 
@@ -20,8 +21,8 @@ CACHE_DIR = os.path.join(constants.USER_DATA_DIR, "pypin_cache")
 
 @contextlib.contextmanager
 def suppress_specific_output():
-    temp_stdout = io.StringIO()
-    temp_stderr = io.StringIO()
+    temp_stdout = io_module.StringIO()
+    temp_stderr = io_module.StringIO()
     with contextlib.redirect_stdout(temp_stdout), contextlib.redirect_stderr(temp_stderr):
         yield
     output = temp_stdout.getvalue() + temp_stderr.getvalue()
@@ -160,7 +161,7 @@ def get_board_data(pinterest, board, max_images):
 
 def load_image_from_url(url):
     response = requests.get(url, timeout=5)
-    img = Image.open(io.BytesIO(response.content))
+    img = Image.open(io_module.BytesIO(response.content))
     img = img.convert('RGB')
     img_array = np.array(img)
     img_tensor = torch.from_numpy(img_array).float() / 255.0
@@ -198,20 +199,38 @@ def handle_username_data_fetch(username):
     return {"board_map": board_map}
 
 
-class DN_pyPinNode:
+class DN_pyPinNode(io.ComfyNode):
     instance_caches = {}
+    current_username = None
+    _instance_state = {}
 
-    def __init__(self):
-        self.current_username = None
-        self._reset_pools()
-
-    def _reset_pools(self):
+    """ def _reset_pools(self):
         self.current_pools = {}
         self.used_pools = {}
         self.last_boards = {}
-        self.last_sections = {}
+        self.last_sections = {} """
+
+    @classmethod
+    def _get_instance_state(cls, unique_id):
+        if unique_id not in cls._instance_state:
+            cls._instance_state[unique_id] = {
+                'current_pools': {},
+                'used_pools': {},
+                'last_boards': {},
+                'last_sections': {},
+            }
+        return cls._instance_state[unique_id]
+
+    @classmethod
+    def _reset_pools(cls, unique_id):
+        state = cls._get_instance_state(unique_id)
+        state['current_pools'] = {}
+        state['used_pools'] = {}
+        state['last_boards'] = {}
+        state['last_sections'] = {}
     
-    def _get_all_images(self, selected_board, section, boards):
+    @classmethod
+    def _get_all_images(cls, selected_board, section, boards):
         if selected_board == 'all':
             all_images = []
             for board_data in boards.values():
@@ -247,11 +266,13 @@ class DN_pyPinNode:
         
         return []
     
-    def _select_chaotic_draw(self, all_images, unique_id, board, section):
+    @classmethod
+    def _select_chaotic_draw(cls, all_images, unique_id, board, section):
         if not all_images:
             return ''
-        self.last_boards[unique_id] = board
-        self.last_sections[unique_id] = section
+        state = cls._get_instance_state(unique_id)
+        state['last_boards'][unique_id] = board
+        state['last_sections'][unique_id] = section
         return random.choice(all_images)
     
     # OLD _select_fixed logic (commented out for revert)
@@ -268,76 +289,89 @@ class DN_pyPinNode:
     #         return random.choice(all_images)
     #     return last_image
 
-    def _select_fixed(self, all_images, unique_id, board, section, last_image, image_output):
+    @classmethod
+    def _select_fixed(cls, all_images, unique_id, board, section, last_image, image_output):
         if image_output == 'fixed' and last_image and last_image in all_images:
-            self.last_boards[unique_id] = board
-            self.last_sections[unique_id] = section
+            state = cls._get_instance_state(unique_id)
+            state['last_boards'][unique_id] = board
+            state['last_sections'][unique_id] = section
             return last_image
         
         if not all_images:
             return ''
         
         selected = random.choice(all_images)
-        self.last_boards[unique_id] = board
-        self.last_sections[unique_id] = section
+        state = cls._get_instance_state(unique_id)
+        state['last_boards'][unique_id] = board
+        state['last_sections'][unique_id] = section
         return selected
     
-    def _select_circular_shuffle(self, all_images, unique_id, board, section):
-        last_board = self.last_boards.get(unique_id)
-        last_section = self.last_sections.get(unique_id)
+    @classmethod
+    def _select_circular_shuffle(cls, all_images, unique_id, board, section):
+        state = cls._get_instance_state(unique_id)
+        last_board = state['last_boards'].get(unique_id)
+        last_section = state['last_sections'].get(unique_id)
         changed = last_board != board or last_section != section
 
-        if changed or unique_id not in self.current_pools:
-            self.last_boards[unique_id] = board
-            self.last_sections[unique_id] = section
-            self.current_pools[unique_id] = random.sample(all_images, len(all_images)) if all_images else []
-            self.used_pools[unique_id] = []
+        if changed or unique_id not in state['current_pools']:
+            state['last_boards'][unique_id] = board
+            state['last_sections'][unique_id] = section
+            state['current_pools'][unique_id] = random.sample(all_images, len(all_images)) if all_images else []
+            state['used_pools'][unique_id] = []
 
-        if unique_id not in self.current_pools or not self.current_pools[unique_id]:
+        if unique_id not in state['current_pools'] or not state['current_pools'][unique_id]:
             return ''
 
-        selected_image = random.choice(self.current_pools[unique_id])
-        self.current_pools[unique_id].remove(selected_image)
-        self.used_pools[unique_id].append(selected_image)
+        selected_image = random.choice(state['current_pools'][unique_id])
+        state['current_pools'][unique_id].remove(selected_image)
+        state['used_pools'][unique_id].append(selected_image)
 
-        if not self.current_pools[unique_id]:
-            self.current_pools[unique_id] = random.sample(self.used_pools[unique_id], len(self.used_pools[unique_id])) if self.used_pools[unique_id] else []
-            self.used_pools[unique_id] = []
+        if not state['current_pools'][unique_id]:
+            state['current_pools'][unique_id] = random.sample(state['used_pools'][unique_id], len(state['used_pools'][unique_id])) if state['used_pools'][unique_id] else []
+            state['used_pools'][unique_id] = []
 
         return selected_image
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "node_configs": ("STRING", {"default": "{}", "multiline": False}),
-                "pinterest_data": ("STRING", {"default": "{}", "multiline": False}),
-                "username": ("STRING", {"default": "", "multiline": False}),
-            },
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
-            },
-        }
+    def define_schema(cls):
+        return io.Schema(
+            node_id="DN_pyPinNode",
+            display_name="Pinterest Image Node",
+            category="Dado's Nodes",
+            description="Fetch images from Pinterest boards and sections",
+            inputs=[
+                io.String.Input("node_configs", default="{}", multiline=False),
+                io.String.Input("pinterest_data", default="{}", multiline=False),
+                io.String.Input("username", default="", multiline=False)
+            ],
+            outputs=[
+                io.Image.Output(display_name="image"),
+                io.Custom("JSON").Output(display_name="configs"),
+                io.Custom("JSON").Output(display_name="data")
+            ],
+            hidden=[
+                io.Hidden.unique_id
+            ],
+            is_output_node=True
+        )
 
-    RETURN_TYPES = ("IMAGE", "JSON", "JSON")
-    RETURN_NAMES = ("image", "configs", "data")
-
-    FUNCTION = "get_image"
-    CATEGORY = "Dado's Nodes"
-
-    def get_image(self, node_configs, pinterest_data, username, unique_id):
+    @classmethod
+    def execute(cls, node_configs, pinterest_data, username):
+        unique_id = cls.hidden.unique_id
         configs = json.loads(node_configs) if node_configs else {}
         data = {}
         api_requests = configs.get('api_requests', 'cached')
+        state = cls._get_instance_state(unique_id)
+        
         if api_requests == "live":
-            data = DN_pyPinNode.instance_caches.get(unique_id)
+            data = cls.instance_caches.get(unique_id)
         elif api_requests == "cached":
             cache_path = os.path.join(CACHE_DIR, f"{username}_boards.json")
             with open(cache_path, 'r') as f:
                 data = json.load(f)
 
         if configs.get('reset_pool'):
-            self._reset_pools()
+            cls._reset_pools(unique_id)
             configs['last_boards_hash'] = None
             configs['reset_pool'] = False
 
@@ -346,26 +380,26 @@ class DN_pyPinNode:
         ]
         boards = data.get('boards')
 
-        if board and section and unique_id not in self.last_boards:
-            self.last_boards[unique_id] = board
-            self.last_sections[unique_id] = section
+        if board and section and unique_id not in state['last_boards']:
+            state['last_boards'][unique_id] = board
+            state['last_sections'][unique_id] = section
 
         boards_str = json.dumps(boards, sort_keys=True)
         current_hash = hashlib.md5(boards_str.encode()).hexdigest()
         if configs.get('last_boards_hash') != current_hash:
-            self._reset_pools()
+            cls._reset_pools(unique_id)
             configs['last_boards_hash'] = current_hash
             
             if board and section:
-                self.last_boards[unique_id] = board
-                self.last_sections[unique_id] = section
+                state['last_boards'][unique_id] = board
+                state['last_sections'][unique_id] = section
 
-        all_images = self._get_all_images(board, section, boards)
+        all_images = cls._get_all_images(board, section, boards)
         
         mode_strategies = {
-            'chaotic draw': lambda: self._select_chaotic_draw(all_images, unique_id, board, section),
-            'fixed': lambda: self._select_fixed(all_images, unique_id, board, section, last_image, image_output),
-            'circular shuffle': lambda: self._select_circular_shuffle(all_images, unique_id, board, section)
+            'chaotic draw': lambda: cls._select_chaotic_draw(all_images, unique_id, board, section),
+            'fixed': lambda: cls._select_fixed(all_images, unique_id, board, section, last_image, image_output),
+            'circular shuffle': lambda: cls._select_circular_shuffle(all_images, unique_id, board, section)
         }
         
         selection_strategy = mode_strategies.get(image_output)
@@ -392,16 +426,16 @@ class DN_pyPinNode:
         pretty_data = json.dumps(data, indent=2)
         stripped_pretty_data = json.dumps(strip_images(data), indent=2)
 
-        return {
-            "ui": {
+        return io.NodeOutput(
+            img_tensor, pretty_configs, pretty_data,
+            ui={
                 "node_configs": pretty_configs,
                 "pinterest_data": stripped_pretty_data
-            },
-            "result": (img_tensor, pretty_configs, pretty_data)
-        }
+            }
+        )
 
     @classmethod
-    def IS_CHANGED(cls, node_configs, pinterest_data, username, unique_id):
+    def fingerprint_inputs(cls, **kwargs):
         return random.random()
 
 @register_operation_handler

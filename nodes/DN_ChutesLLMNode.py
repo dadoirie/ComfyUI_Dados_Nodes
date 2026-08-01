@@ -1,13 +1,14 @@
 import json
 import requests
 import base64
-import io
+import io as io_module
 from PIL import Image
 import os
 from .. import constants
 from .utils.api_routes import register_operation_handler
 from .utils.utils import get_setting
 from aiohttp import web
+from comfy_api.latest import io
 
 _CHUTES_MODELS = [
     "moonshotai/Kimi-K2-Thinking",
@@ -70,7 +71,7 @@ def delete_llm_prompt(prompt_name):
     if os.path.exists(prompt_file):
         os.remove(prompt_file)
 
-class DN_ChutesLLMNode:
+class DN_ChutesLLMNode(io.ComfyNode):
     CHUTES_MODELS = _CHUTES_MODELS
     VISION_MODELS = _VISION_MODELS_CHUTES
 
@@ -79,12 +80,39 @@ class DN_ChutesLLMNode:
         for model in _CHUTES_MODELS
     ]
 
-    def _image_to_base64_data_url(self, image_tensor):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="DN_ChutesLLMNode",
+            display_name="Chutes LLM",
+            category="Dado's Nodes",
+            description="Generate text using Chutes AI models",
+            inputs=[
+                io.String.Input("system", default="", multiline=True, tooltip="Main prompt/instructions for the AI model."),
+                io.String.Input("user", default="", multiline=True, tooltip="The user's message/query sent to the AI."),
+                io.Combo.Input("model", default="zai-org/GLM-4.5", options=cls.MODEL_OPTIONS, tooltip="The AI model to use for text generation."),
+                io.Float.Input("temperature", default=0.7, min=0.0, max=2.0, step=0.1, tooltip="Controls randomness in output. Lower values (0.0) make responses more deterministic, higher values (2.0) more creative and varied."),
+                io.Int.Input("max_tokens", default=4056, min=1, max=20000, step=1, tooltip="Maximum number of tokens in the response. Lower values (1) limit response length, higher values (20000) allow longer responses."),
+                io.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, step=1, tooltip="Random seed for reproducible outputs. Same seed generates identical responses."),
+                io.Float.Input("top_p", default=1.0, min=0.0, max=1.0, step=0.01, tooltip="Nucleus sampling parameter. Lower values (0.0) make output more focused, higher values (1.0) more diverse."),
+                io.Int.Input("top_k", default=-1, min=-1, max=1000, step=1, tooltip="Top-k sampling parameter. Number of top tokens to consider (-1 = no limit). Higher values make sampling more restrictive."),
+                io.Image.Input("image", optional=True, tooltip="Optional image input for vision-capable models."),
+                io.String.Input("text", force_input=True, optional=True, tooltip="Additional text input to append to the user message.")
+            ],
+            outputs=[
+                io.String.Output(display_name="thinking"),
+                io.String.Output(display_name="response"),
+                io.Custom("JSON").Output(display_name="full_response")
+            ]
+        )
+
+    @classmethod
+    def _image_to_base64_data_url(cls, image_tensor):
         arr = (image_tensor.cpu().numpy() * 255).clip(0, 255).astype('uint8')
 
         pil_image = Image.fromarray(arr)
 
-        buffer = io.BytesIO()
+        buffer = io_module.BytesIO()
         pil_image.save(buffer, format="PNG")
         image_bytes = buffer.getvalue()
 
@@ -93,31 +121,7 @@ class DN_ChutesLLMNode:
         return f"data:image/png;base64,{base64_string}"
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "system": ("STRING", {"default": "", "multiline": True, "tooltip": "Main prompt/instructions for the AI model."}),
-                "user": ("STRING", {"default": "", "multiline": True, "tooltip": "The user's message/query sent to the AI."}),
-                "model": (cls.MODEL_OPTIONS, {"default": "zai-org/GLM-4.5-FP8", "tooltip": "The AI model to use for text generation."}),
-                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "Controls randomness in output. Lower values (0.0) make responses more deterministic, higher values (2.0) more creative and varied."}),
-                "max_tokens": ("INT", {"default": 4056, "min": 1, "max": 20000, "step": 1, "tooltip": "Maximum number of tokens in the response. Lower values (1) limit response length, higher values (20000) allow longer responses."}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "step": 1, "tooltip": "Random seed for reproducible outputs. Same seed generates identical responses."}),
-                "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Nucleus sampling parameter. Lower values (0.0) make output more focused, higher values (1.0) more diverse."}),
-                "top_k": ("INT", {"default": -1, "min": -1, "max": 1000, "step": 1, "tooltip": "Top-k sampling parameter. Number of top tokens to consider (-1 = no limit). Higher values make sampling more restrictive."}),
-            },
-            "optional": {
-                "image": ("IMAGE", {"tooltip": "Optional image input for vision-capable models."}),
-                "text": ("STRING", {"forceInput": True, "tooltip": "Additional text input to append to the user message."}),
-            },
-        }
-
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("thinking", "response", "full_response")
-
-    FUNCTION = "generate_response"
-    CATEGORY = "Dado's Nodes"
-
-    def generate_response(self, system, user, model, image=None, text=None, temperature=0.7, max_tokens=4056, seed=0, top_p=1.0, top_k=-1):
+    def execute(cls, system, user, model, image=None, text=None, temperature=0.7, max_tokens=4056, seed=0, top_p=1.0, top_k=-1):
         model = model.replace(" (Vision)", "")
 
         user_content = user
@@ -129,10 +133,10 @@ class DN_ChutesLLMNode:
             {"role": "user", "content": "[USER]: " + user_content}
         ]
 
-        if model in self.VISION_MODELS and image is not None:
+        if model in cls.VISION_MODELS and image is not None:
             content = [{"type": "text", "text": user_content}]
             for i in range(image.shape[0]):
-                content.append({"type": "image_url", "image_url": {"url": self._image_to_base64_data_url(image[i])}})
+                content.append({"type": "image_url", "image_url": {"url": cls._image_to_base64_data_url(image[i])}})
             messages = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": content}
@@ -207,7 +211,7 @@ class DN_ChutesLLMNode:
                 thinking = response[:think_end_idx].lstrip('\n')
                 response = response[think_end_idx + 8:].lstrip('\n')
 
-        return (thinking, response, json.dumps(complete_response, indent=2))
+        return io.NodeOutput(thinking, response, complete_response)
 
 @register_operation_handler
 async def handle_llm_operations(request):

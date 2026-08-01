@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js"
+import { api } from "../../scripts/api.js"
 
 let EXTENSION_NAME, MESSAGE_ROUTE, chainCallback, fetchSend;
 (async () => {
@@ -29,7 +30,7 @@ app.registerExtension({
                     }
                 }
             }
-
+            
             const computed = this.computeSize();
             this.size[0] = Math.max(this.size[0], computed[0]);
             this.size[1] = computed[1];
@@ -177,6 +178,17 @@ app.registerExtension({
             }
             originalOnNodeRemoved?.apply(this, arguments);
         };
+        api.addEventListener('reconnected', () => {
+            // Find all DN_CSVMultiDropDownNode instances and send their selections
+            for (const node of app.graph._nodes) {
+                if (node.type === "DN_CSVMultiDropDownNode" && node.updateBackend) {
+                    console.log("API reconnected - sending selections to backend");
+                    setTimeout(() => {
+                        node.updateBackend().catch(() => {/* silent error */});
+                    }, 100);
+                }
+            }
+        });
     }
 })
 

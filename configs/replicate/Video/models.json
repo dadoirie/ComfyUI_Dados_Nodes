@@ -1,0 +1,7 @@
+{
+    "wan-video/wan-2.2-i2v-fast": {
+      "version": "hidden",
+      "input_schema": "wan-video.wan-2.2-i2v-fast.input.json",
+      "output_schema": "wan-video.wan-2.2-i2v-fast.output.json"
+    }
+}

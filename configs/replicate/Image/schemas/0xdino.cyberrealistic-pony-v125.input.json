@@ -1,0 +1,90 @@
+{
+    "type": "object",
+    "title": "Input",
+    "properties": {
+        "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "default": "score_9, score_8_up, score_7_up, super-detailed fashion portrait of a young woman in ripped denim shorts and ribbed tank top, colorful accessories, RAW photography style, soft cinematic lighting, dramatic shadows across her face and body, brown hair gently tousled, (fine-art editorial atmosphere), moody tone, high-resolution textures and rich natural detail, solo subject",
+            "x-order": 0,
+            "description": "Positive prompt"
+        },
+        "negative_prompt": {
+            "type": "string",
+            "title": "Negative Prompt",
+            "default": "score 6, score 5, score 4, (worst quality:1.2), (low quality:1.2), (normal quality:1.2), lowres, bad anatomy, bad hands, signature, watermarks, ugly, imperfect eyes, skewed eyes, unnatural face, unnatural body, error, extra limb, missing limbs",
+            "x-order": 1,
+            "description": "Negative prompt"
+        },
+        "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0,
+            "x-order": 2,
+            "description": "Random seed (0 = random)"
+        },
+        "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "default": 40,
+            "x-order": 3,
+            "description": "Sampling steps"
+        },
+        "cfg": {
+            "type": "number",
+            "title": "Cfg",
+            "default": 4,
+            "x-order": 4,
+            "description": "CFG scale"
+        },
+        "denoise": {
+            "type": "number",
+            "title": "Denoise",
+            "default": 0.98,
+            "x-order": 5,
+            "description": "Denoise strength"
+        },
+        "width": {
+            "type": "integer",
+            "title": "Width",
+            "default": 768,
+            "x-order": 6,
+            "description": "Image width"
+        },
+        "height": {
+            "type": "integer",
+            "title": "Height",
+            "default": 1152,
+            "x-order": 7,
+            "description": "Image height"
+        },
+        "facerestore": {
+            "type": "boolean",
+            "title": "Facerestore",
+            "default": true,
+            "x-order": 8,
+            "description": "Enable face restoration"
+        },
+        "codeformer_fidelity": {
+            "type": "number",
+            "title": "Codeformer Fidelity",
+            "default": 0.4,
+            "x-order": 9,
+            "description": "CodeFormer fidelity"
+        },
+        "sampler_name": {
+            "type": "string",
+            "title": "Sampler Name",
+            "default": "dpmpp_3m_sde",
+            "x-order": 10,
+            "description": "Sampler name"
+        },
+        "scheduler": {
+            "type": "string",
+            "title": "Scheduler",
+            "default": "karras",
+            "x-order": 11,
+            "description": "Scheduler type"
+        }
+    }
+}

@@ -1,27 +1,28 @@
 from dynamicprompts.generators import RandomPromptGenerator
 from dynamicprompts.generators.attentiongenerator import AttentionGenerator
+from comfy_api.latest import io
 
-class DN_WildcardsProcessor:
-    
-    def __init__(self):
-        pass
+class DN_WildcardsProcessor(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="DN_WildcardsProcessor",
+            display_name="Wildcards Processor",
+            category="Dado's Nodes/Text & Prompt",
+            description="Process text with wildcards using dynamic prompts",
+            inputs=[
+                io.String.Input("text", multiline=True, tooltip="Text with wildcards to process"),
+                io.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, tooltip="Seed for wildcard randomization"),
+                io.Boolean.Input("use_attention", default=False, tooltip="Use attention generator for emphasis")
+            ],
+            outputs=[
+                io.String.Output(display_name="processed_text"),
+                io.Int.Output(display_name="seed")
+            ]
+        )
     
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "text": ("STRING", {"multiline": True, "tooltip": "Text with wildcards to process"}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 2000000000, "tooltip": "Seed for wildcard randomization"}),
-                "use_attention": ("BOOLEAN", {"default": False, "tooltip": "Use attention generator for emphasis"}),
-            }
-        }
-    
-    RETURN_TYPES = ("STRING", "INT",)
-    RETURN_NAMES = ("processed_text", "seed",)
-    FUNCTION = "process_wildcards"
-    CATEGORY = "Dado's Nodes/Text & Prompt"
-    
-    def process_wildcards(self, text, seed, use_attention):
+    def execute(cls, text, seed, use_attention):
         if not text:
             return (text, seed)
         
@@ -41,8 +42,8 @@ class DN_WildcardsProcessor:
             prompts = generator.generate(text, num_images=1, seeds=seed)
             processed_text = list(prompts)[0] if prompts else text
         
-        return (processed_text, seed)
+        return io.NodeOutput(processed_text, seed)
     
     @classmethod
-    def IS_CHANGED(cls, text, seed, use_attention):
-        return seed
+    def fingerprint_inputs(cls, **kwargs):
+        return kwargs['seed']

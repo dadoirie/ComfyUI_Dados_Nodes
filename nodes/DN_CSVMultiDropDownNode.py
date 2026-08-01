@@ -4,42 +4,48 @@
 @description: A node that accepts CSV input and outputs multiple dropdown selections
 """
 
-from typing import Dict, Any, ClassVar, List
+from typing import Dict, ClassVar, List
 import json
 import random
 import time
 from aiohttp import web
 from .utils.api_routes import register_operation_handler
+from comfy_api.latest import io
 
-class DN_CSVMultiDropDownNode:
+class DN_CSVMultiDropDownNode(io.ComfyNode):
     """
     Node that outputs selections from multiple CSV-based dropdowns.
     """
-    RETURN_TYPES = ("STRING",) * 31
-    RETURN_NAMES = ("combined_selections",) + tuple(str(i) for i in range(1, 31))
-    FUNCTION = "process"
-    CATEGORY = "Dado's Nodes/Text & Prompt"
-
     selections: ClassVar[Dict[str, Dict[str, str]]] = {}
     entries_map: ClassVar[Dict[str, Dict[str, List[str]]]] = {}
     DEFAULT_SELECTION = "empty"
 
     @classmethod
-    def INPUT_TYPES(cls) -> Dict[str, Dict[str, Any]]:
-        return {
-            "required": {},
-            "optional": {
-                "csv_text": ("STRING", {"multiline": True, "tooltip": 'Each line defines a dropdown. First item is the ID, rest are options.\nUse "random" to select a random option.\ncolor,"green,blue,yellow" & color,green,blue,yellow (both formats supported)'}),
-                "remove_duplicates": ("BOOLEAN", {"default": False, "tooltip": "Remove duplicate entries in dropdowns"}),
-            },
-            "hidden": {
-                "unique_id": "UNIQUE_ID"
-            }
-        }
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="DN_CSVMultiDropDownNode",
+            display_name="CSV Multi DropDown",
+            category="Dado's Nodes/Text & Prompt",
+            description="A node that accepts CSV input and outputs multiple dropdown selections",
+            inputs=[
+                io.String.Input("csv_text", multiline=True, tooltip='Each line defines a dropdown. First item is the ID, rest are options.\nUse "random" to select a random option.\ncolor,"green,blue,yellow" & color,green,blue,yellow (both formats supported)'),
+                io.Boolean.Input("remove_duplicates", default=False, tooltip="Remove duplicate entries in dropdowns")
+            ],
+            outputs=[
+                io.String.Output(display_name="combined_selections")
+            ] + [
+                io.String.Output(display_name=str(i)) for i in range(1, 31)
+            ],
+            hidden=[
+                io.Hidden.unique_id
+            ]
+        )
 
-    def process(self, csv_text, remove_duplicates, unique_id: str) -> tuple:
+    @classmethod
+    def execute(cls, csv_text, remove_duplicates):
+        unique_id = cls.hidden.unique_id
         node_id = str(unique_id)
-        selections_for_node = self.__class__.selections.get(node_id, {})
+        selections_for_node = cls.selections.get(node_id, {})
         result_entries = []
 
         dropdown_order = []
@@ -55,13 +61,13 @@ class DN_CSVMultiDropDownNode:
                     dropdown_order.append(dropdown_id)
 
         for dropdown_id in dropdown_order:
-            selection = selections_for_node.get(dropdown_id, self.DEFAULT_SELECTION)
+            selection = selections_for_node.get(dropdown_id, cls.DEFAULT_SELECTION)
             if selection == "random":
-                entries = self.__class__.entries_map.get(node_id, {}).get(dropdown_id, [])
-                selection = random.choice(entries) if entries else self.DEFAULT_SELECTION
+                entries = cls.entries_map.get(node_id, {}).get(dropdown_id, [])
+                selection = random.choice(entries) if entries else cls.DEFAULT_SELECTION
             result_entries.append(selection)
 
-        combined = ", ".join(result_entries) if result_entries else self.DEFAULT_SELECTION
+        combined = ", ".join(result_entries) if result_entries else cls.DEFAULT_SELECTION
         
         individual_outputs = []
         for i in range(30):
@@ -70,14 +76,16 @@ class DN_CSVMultiDropDownNode:
             else:
                 individual_outputs.append("")
         
-        return (combined,) + tuple(individual_outputs)
+        return io.NodeOutput(combined, *individual_outputs)
 
     @classmethod
-    def IS_CHANGED(cls, csv_text, remove_duplicates, unique_id: str) -> str:
+    def fingerprint_inputs(cls, **kwargs):
+        unique_id = cls.hidden.unique_id
         node_id = str(unique_id)
         selections_for_node = cls.selections.get(node_id, {})
         timestamp = time.time()
         return f"{node_id}:{json.dumps(selections_for_node)}:{timestamp}"
+
 
 @register_operation_handler
 async def handle_csv_dropdown_operations(request):
