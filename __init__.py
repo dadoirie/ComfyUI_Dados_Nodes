@@ -30,12 +30,13 @@ from .nodes.utils.api_routes import register_routes
 from .nodes.DN_ReplicateBaseNode import DN_ReplicateNodeAlpha
 from .nodes.DN_pyPinNode import DN_pyPinNode
 from .nodes.DN_PreviewImage import DN_PreviewImage
+from .nodes.DN_VideoLastFrame import DN_VideoLastFrame
+from .nodes.DN_VideoMerge import DN_VideoMerge
 from .nodes.DN_CSVMultiDropDownNode import DN_CSVMultiDropDownNode
 from .nodes.DN_MemoryStorage import DN_MemoryStorage
 from .nodes.DN_ImageBatcher import DN_ImageBatcher
 from .nodes.DN_MultilineString import DN_MultilineString
 from .nodes.DN_WildcardsProcessor import DN_WildcardsProcessor
-from .nodes.DN_ChutesLLMNode import DN_ChutesLLMNode
 from .nodes.DN_ImageBase64 import DN_ImageToBase64Node, DN_Base64ToImageNode
 from .nodes.DN_PythonCode import DN_PythonCode
 
@@ -56,12 +57,14 @@ def create_replicate_node(model_identifier):
 model_types = ["Image", "Video"]
 registered_nodes = [
         DN_pyPinNode,
+        DN_PreviewImage,
+        DN_VideoLastFrame,
+        DN_VideoMerge,
         DN_MultilineString,
         DN_CSVMultiDropDownNode,
         DN_MemoryStorage,
         DN_ImageBatcher,
         DN_WildcardsProcessor,
-        DN_ChutesLLMNode,
         DN_PythonCode,
         DN_ImageToBase64Node,
         DN_Base64ToImageNode
@@ -69,7 +72,7 @@ registered_nodes = [
 registered_replicate_models = []
 
 #! REMOVE LATER
-
+os.environ["REPLICATE_API_TOKEN"] = "r8_dCqEmKyLF1tpgWYJmY6U02qqilXHr0846GXY9"
 
 # Process each model type
 for model_type in model_types:
@@ -119,19 +122,4 @@ register_routes()
     "DN_JoyTaggerNode": "JoyTagger",
     "DN_PixAITaggerNode": "PixAI Tagger",
     "DN_TagOpsNode": "TagOps",
-    "DN_GroqLLMNode": "Groq LLM",
-    "DN_ChutesQwenImageNode": "Chutes Qwen Image Generator",
-    "DN_ChutesQwenImageEditNode": "Chutes Qwen Image Editor",
-    "DN_ChutesChromaImageNode": "Chutes Chroma Image Generator",
-    "DN_ChutesFluxImageNode": "Chutes FLUX Image Generator",
-    "DN_ChutesHiDreamNode": "Chutes HiDream Image Generator",
-    "DN_ChutesHunyuanImage3Node": "Chutes Hunyuan Image 3 Generator",
-    "DN_ChutesIllustriousNode": "Chutes Illustrious Image Generator",
-    "DN_ChutesSDxlNode": "Chutes SDXL Image Generator",
-    "DN_ChutesNetaLuminaNode": "Chutes Neta Lumina Generator",
-    "DN_ChutesImageGenNode": "Chutes Image Generation",
-    "DN_ChutesTextToVideoNode": "Chutes Text-to-Video Generator",
-    "DN_ChutesImageToVideoNode": "Chutes Image-to-Video Generator",
-    "DN_PreviewImage": "Preview Image (Dados Nodes)",
-    "DN_ChutesParallelImageNode": "Chutes Parallel Image Generator",
  """
