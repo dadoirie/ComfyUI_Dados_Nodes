@@ -72,7 +72,7 @@ registered_nodes = [
 registered_replicate_models = []
 
 #! REMOVE LATER
-os.environ["REPLICATE_API_TOKEN"] = "r8_dCqEmKyLF1tpgWYJmY6U02qqilXHr0846GXY9"
+
 
 # Process each model type
 for model_type in model_types:

@@ -1,35 +1,35 @@
-import folder_paths
 import os
 import numpy as np
 from PIL import Image
+from comfy_api.latest import io
+import folder_paths
 
-class DN_PreviewImage:
+
+class DN_PreviewImage(io.ComfyNode):
     @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "optional": {
-                "image": ("IMAGE", {"forceInput": True}),
-                "mp4_path": ("STRING", {"forceInput": True}),
-            },
-        }
+    def define_schema(cls):
+        return io.Schema(
+            node_id="DN_PreviewImage",
+            display_name="Preview Image (Dados Nodes)",
+            category="Dado's Nodes/Image",
+            description="Preview an image or an mp4 video path",
+            inputs=[
+                io.Image.Input("image", optional=True),
+                io.String.Input("mp4_path", optional=True, force_input=True),
+            ],
+            outputs=[],
+            is_output_node=True,
+        )
 
-    RETURN_TYPES = ()
-    OUTPUT_NODE = True
-    FUNCTION = "preview"
-    CATEGORY = "Dado's Nodes/Image"
-
-    def __init__(self):
-        self.output_dir = folder_paths.get_temp_directory()
-        self.type = "temp"
-
-    def preview(self, image=None, mp4_path=None):
+    @classmethod
+    def execute(cls, image=None, mp4_path=None):
         if image is None and mp4_path is None:
-            return {}
+            return io.NodeOutput()
 
         if image is not None:
-            # Process image tensor
+            output_dir = folder_paths.get_temp_directory()
             filename_prefix = "ComfyUI"
-            full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir)
+            full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, output_dir)
 
             img_array = image.cpu().numpy()
 
@@ -47,13 +47,13 @@ class DN_PreviewImage:
             file_path = os.path.join(full_output_folder, file)
             img.save(file_path)
 
-            return {"ui": {
+            return io.NodeOutput(ui={
                 "images": [{
                     "filename": file,
                     "subfolder": subfolder,
-                    "type": self.type
+                    "type": "temp"
                 }]
-            }}
+            })
 
         if mp4_path is not None and isinstance(mp4_path, str) and mp4_path.lower().endswith(".mp4"):
             # If it's an MP4 path, return it directly
@@ -61,10 +61,12 @@ class DN_PreviewImage:
             comfyui_index = subfolder_path.find("ComfyUI/")
             after_comfyui = subfolder_path[comfyui_index + 8:]
             type_value = after_comfyui.split('/')[0]
-            return {"ui": {
+            return io.NodeOutput(ui={
                 "videos": [{
                     "filename": os.path.basename(mp4_path),
                     "subfolder": subfolder_path,
                     "type": type_value
                 }]
-            }}
+            })
+
+        return io.NodeOutput()
