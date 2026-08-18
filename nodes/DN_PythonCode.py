@@ -10,11 +10,11 @@ import re
 import json
 import numpy as np
 
-def _string_function(a, b, c):
+def _string_function(a, b, c, seed):
 '''
 
     _sandbox_template1 = '''\
-_result.append(_string_function(_a, _b, _c))
+_result.append(_string_function(_a, _b, _c, _seed))
 '''
 
     ALLOWED_HOSTS = {"api.naga.ac"}
@@ -75,7 +75,8 @@ _result.append(_string_function(_a, _b, _c))
                     optional=True,
                     force_input=True,
                     tooltip="Optional string parameter c"
-                )
+                ),
+                io.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, tooltip="Seed for wildcard randomization"),
             ],
             outputs=[
                 io.String.Output(display_name="output")
@@ -83,7 +84,7 @@ _result.append(_string_function(_a, _b, _c))
         )
 
     @classmethod
-    def execute(cls, python_code, a="", b="", c=""):
+    def execute(cls, python_code, seed, a="", b="", c=""):
         if "import" in python_code:
             raise ValueError("\"import\" cannot be included in python_code for security reasons")
 
@@ -102,6 +103,7 @@ _result.append(_string_function(_a, _b, _c))
             "safe_get": cls.safe_get,
             "safe_post": cls.safe_post,
             "_result": result,
+            "_seed": seed,
             "_a": a,
             "_b": b,
             "_c": c
@@ -111,5 +113,8 @@ _result.append(_string_function(_a, _b, _c))
         
     @classmethod
     def fingerprint_inputs(cls, **kwargs):
-        cls._generation_dict["count"] += 1
-        return str(cls._generation_dict["count"])
+        return kwargs['seed']
+    #@classmethod
+    #def fingerprint_inputs(cls, **kwargs):
+        #cls._generation_dict["count"] += 1
+        #return str(cls._generation_dict["count"])
