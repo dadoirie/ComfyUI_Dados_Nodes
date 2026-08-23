@@ -11,5 +11,15 @@ def ensure_py3pin():
         except subprocess.CalledProcessError as e:
             print(f"Failed to install py3pin: {e}")
 
+def ensure_dynamicprompts():
+    if importlib.util.find_spec("dynamicprompts") is None:
+        print("dynamicprompts is not installed. Installing...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "git+https://github.com/DadoIrie/dynamicprompts.git"])
+            print("dynamicprompts installed successfully.")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install dynamicprompts: {e}")
+
 
 ensure_py3pin()
+ensure_dynamicprompts()

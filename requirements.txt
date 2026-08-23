@@ -1,4 +1,3 @@
-dynamicprompts
 xxhash
 num2words
 aiohttp
