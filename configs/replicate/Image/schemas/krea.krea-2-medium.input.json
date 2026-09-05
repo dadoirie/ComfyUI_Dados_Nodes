@@ -1,0 +1,88 @@
+{
+  "type": "object",
+  "title": "Input",
+  "required": [
+    "prompt"
+  ],
+  "properties": {
+    "seed": {
+      "type": "integer",
+      "title": "Seed",
+      "x-order": 7,
+      "nullable": true,
+      "description": "Random seed. Set for reproducible generation."
+    },
+    "prompt": {
+      "type": "string",
+      "title": "Prompt",
+      "x-order": 0,
+      "description": "Text prompt describing the image."
+    },
+    "creativity": {
+      "enum": [
+        "raw",
+        "low",
+        "medium",
+        "high"
+      ],
+      "type": "string",
+      "title": "creativity",
+      "description": "How far the model expands on your prompt. 'raw' renders only what you describe; 'low' fills in obvious gaps; 'medium' adds reasonable interpretation; 'high' takes meaningful creative liberty.",
+      "default": "medium",
+      "x-order": 2
+    },
+    "aspect_ratio": {
+      "enum": [
+        "1:1",
+        "4:3",
+        "3:2",
+        "16:9",
+        "2.35:1",
+        "4:5",
+        "2:3",
+        "9:16"
+      ],
+      "type": "string",
+      "title": "aspect_ratio",
+      "description": "Aspect ratio of the generated image.",
+      "default": "1:1",
+      "x-order": 1
+    },
+    "moodboard_id": {
+      "type": "string",
+      "title": "Moodboard Id",
+      "x-order": 5,
+      "nullable": true,
+      "description": "Optional Krea moodboard UUID. Moodboards must first be created in the Krea webapp (https://www.krea.ai/moodboards). Get the UUID from the moodboard share URL: `?share=<uuid>`."
+    },
+    "moodboard_strength": {
+      "type": "number",
+      "title": "Moodboard Strength",
+      "default": 0.35,
+      "maximum": 1,
+      "minimum": 0,
+      "x-order": 6,
+      "description": "How strongly the moodboard shapes the output."
+    },
+    "style_reference_images": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "title": "Style Reference Images",
+      "default": [],
+      "x-order": 3,
+      "description": "Up to 10 reference images whose style should be transferred to the output. Their style is extracted and applied with the strength controlled by `style_reference_strength`."
+    },
+    "style_reference_strength": {
+      "type": "number",
+      "title": "Style Reference Strength",
+      "default": 0.5,
+      "maximum": 1,
+      "minimum": 0,
+      "x-order": 4,
+      "description": "How strongly to apply the style of the reference images. 0 means no influence, 1 means the style dominates. Applied to all style reference images."
+    }
+  }
+}

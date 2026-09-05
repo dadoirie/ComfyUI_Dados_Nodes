@@ -8,5 +8,15 @@
       "version": "hidden",
       "input_schema": "qwen.qwen-image-edit-plus.input.json",
       "output_schema": "qwen.qwen-image-edit-plus.output.json"
+    },
+    "krea/krea-2-medium": {
+      "version": "hidden",
+      "input_schema": "krea.krea-2-medium.input.json",
+      "output_schema": "krea.krea-2-medium.output.json"
+    },
+    "krea/krea-2-large": {
+      "version": "hidden",
+      "input_schema": "krea.krea-2-large.input.json",
+      "output_schema": "krea.krea-2-large.output.json"
     }
 }

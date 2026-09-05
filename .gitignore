@@ -3,4 +3,5 @@ __pycache__/
 models/
 .cred_root/
 config.json
-.github/copilot-instructions.md
+deepseek_api/
+danyapi/

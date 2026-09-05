@@ -39,6 +39,8 @@ from .nodes.DN_MultilineString import DN_MultilineString
 from .nodes.DN_WildcardsProcessor import DN_WildcardsProcessor
 from .nodes.DN_ImageBase64 import DN_ImageToBase64Node, DN_Base64ToImageNode
 from .nodes.DN_PythonCode import DN_PythonCode
+from .nodes.DN_DeepSeekChat import DN_DeepSeekChat
+from .nodes.DN_DanyAPI import DN_DanyAPI
 
 # Function to create a dynamic node class for a specific model
 def create_replicate_node(model_identifier):
@@ -67,12 +69,13 @@ registered_nodes = [
         DN_WildcardsProcessor,
         DN_PythonCode,
         DN_ImageToBase64Node,
-        DN_Base64ToImageNode
+        DN_Base64ToImageNode,
+        DN_DeepSeekChat,
+        DN_DanyAPI
     ]
 registered_replicate_models = []
 
-#! REMOVE LATER
-os.environ["REPLICATE_API_TOKEN"] = "EMPTY"
+
 
 # Process each model type
 for model_type in model_types:
