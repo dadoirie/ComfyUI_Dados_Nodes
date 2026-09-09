@@ -23,6 +23,7 @@ def is_package_installed(package_name):
         return False
 
 def install_package_if_missing(package_spec):
+    package_spec = package_spec.split('#')[0].strip()
     match = re.match(r'^([a-zA-Z0-9\-_]+)', package_spec)
     if not match:
         return

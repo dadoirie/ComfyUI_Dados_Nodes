@@ -76,7 +76,6 @@ registered_nodes = [
 registered_replicate_models = []
 
 
-
 # Process each model type
 for model_type in model_types:
     models_file = os.path.join(BASE_DIR, "configs", "replicate", model_type, "models.json")
