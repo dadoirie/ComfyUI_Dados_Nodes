@@ -1,112 +1,78 @@
+import json
 import os
 import random
-import json
 
-from .utils.api_routes import register_operation_handler
-from aiohttp import web
 from .. import constants
 from comfy_api.latest import io
 
-CACHE_DIR = os.path.join(constants.USER_DATA_DIR, "memory_storage")
-DN_STORAGE_DATA = {}
 
 class DN_MemoryStorage(io.ComfyNode):
+    @staticmethod
+    def _store_file() -> str:
+        store_dir = os.path.join(constants.USER_DATA_DIR, "memory_storage")
+        return os.path.join(store_dir, "store.json")
+
+    @classmethod
+    def _read_store(cls) -> dict:
+        file_path = cls._store_file()
+        if not os.path.exists(file_path):
+            return {}
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    @classmethod
+    def _write_store(cls, data: dict) -> None:
+        file_path = cls._store_file()
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        tmp_path = file_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, file_path)
+
     @classmethod
     def define_schema(cls) -> io.Schema:
         return io.Schema(
             node_id="DN_MemoryStorage",
             display_name="Memory Storage",
             category="Dado's Nodes/Memory Storage",
-            description="Store and retrieve values in memory",
+            description="Store and retrieve a text value by key.",
             inputs=[
-                io.String.Input("root_graph_id", default=""),
                 io.Combo.Input("mode", default="get", options=["set", "get"]),
-                io.Combo.Input("context", default="workflow", options=["workflow", "global"]),
-                io.Boolean.Input("persistent", default=False),
                 io.String.Input("key", default=""),
-                io.String.Input("input", force_input=True, optional=True)
+                io.String.Input("input", force_input=True, optional=True),
             ],
             outputs=[
-                io.String.Output(display_name="output")
+                io.String.Output(display_name="output"),
             ],
-            hidden=[
-                io.Hidden.unique_id
-            ],
-            is_output_node=True
+            is_output_node=True,
         )
 
     @classmethod
-    def execute(cls, root_graph_id, mode, context, key, persistent, input=None):
-        if key == "":
-            raise ValueError("Empty key")
+    def execute(cls, mode, key, input=None):
+        key = (key or "").strip()
+        if not key:
+            raise ValueError("key must not be empty")
 
-        storage_key = root_graph_id if context == "workflow" else "global"
-
-        value = None
-        if mode == "set" and input is not None and input.strip() != "":
-            if storage_key not in DN_STORAGE_DATA:
-                DN_STORAGE_DATA[storage_key] = {}
-            DN_STORAGE_DATA[storage_key][key] = input
-            value = input
-            
-            if persistent:
-                file_path = os.path.join(CACHE_DIR, f"{storage_key}.json")
-                data = {}
-                if os.path.exists(file_path):
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
+        if mode == "set":
+            has_value = input is not None and input.strip() != ""
+            if has_value:
+                data = cls._read_store()
                 data[key] = input
-                os.makedirs(CACHE_DIR, exist_ok=True)
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f)
-        
-        if mode == "get":
-            if storage_key not in DN_STORAGE_DATA:
-                DN_STORAGE_DATA[storage_key] = {}
-                
-            if persistent:
-                file_path = os.path.join(CACHE_DIR, f"{storage_key}.json")
-                if os.path.exists(file_path):
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        if key in data:
-                            DN_STORAGE_DATA[storage_key][key] = data[key]
-            
-            if storage_key in DN_STORAGE_DATA and key in DN_STORAGE_DATA[storage_key]:
-                value = DN_STORAGE_DATA[storage_key][key]
-        
-        return io.NodeOutput(value,)
+                cls._write_store(data)
+                return io.NodeOutput(input)
+            data = cls._read_store()
+            if key not in data:
+                raise ValueError(f"no value stored for key '{key}'")
+            return io.NodeOutput(data[key])
+
+        data = cls._read_store()
+        if key not in data:
+            raise ValueError(f"no value stored for key '{key}'")
+        return io.NodeOutput(data[key])
 
     @classmethod
     def fingerprint_inputs(cls, **kwargs):
         return random.random()
-
-@register_operation_handler
-async def memory_storage_operations(request):
-    data = await request.json()
-    
-    operation = data.get('operation')
-    if operation not in ['dummy_op', 'delete_memory_storage']:
-        return None
-    
-    payload = data.get('payload')
-    
-    if operation == 'dummy_op':
-        rootGraphId = payload.get('rootGraphId')
-        print(f"Received rootGraphId: {rootGraphId}")
-        return web.json_response({"response": "got the dummy"})
-    
-    if operation == 'delete_memory_storage':
-        rootGraphId = payload.get('rootGraphId')
-        if rootGraphId in DN_STORAGE_DATA:
-            del DN_STORAGE_DATA[rootGraphId]
-            print(f"Deleted memory storage for rootGraphId: {rootGraphId}")
-        
-        file_path = os.path.join(CACHE_DIR, f"{rootGraphId}.json")
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            print(f"Deleted memory storage file: {file_path}")
-            
-        return web.json_response({"status": "success"})
-    
-    return web.json_response({"error": "Invalid operation"}, status=400)
